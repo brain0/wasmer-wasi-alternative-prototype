@@ -11,6 +11,7 @@ impl TypeDefinitionExtensions for UnionDatatype {
     fn get_type_definitions(&self, ident: &Id, docs: TokenStream) -> TokenStreamPair {
         let tags: HashMap<_, _>;
         let tag_repr;
+        let tag_repr_size;
 
         match self.tag.tref {
             TypeRef::Name(_) => panic!("Expected an enum, got {:?}", self.tag.tref),
@@ -23,6 +24,7 @@ impl TypeDefinitionExtensions for UnionDatatype {
                         .map(|(i, v)| (v.name.clone(), i))
                         .collect();
                     tag_repr = enum_datatype.repr.to_type();
+                    tag_repr_size = enum_datatype.repr.mem_size_align().size;
                 }
                 _ => panic!("Expected an enum, got {:?}", tp),
             },
@@ -66,29 +68,49 @@ impl TypeDefinitionExtensions for UnionDatatype {
 
         let layout = self.mem_size_align();
 
+        let size = LitInt::new(&format!("{}", layout.size), Span::call_site());
         let array_offset = (layout.size + (layout.align - layout.size % layout.align)) as u32;
         assert!(array_offset % (layout.align as u32) == 0);
 
         let union_layout = self.union_layout();
-        let contents_offset = union_layout.contents_offset as u32;
 
         let read_impl = self.variants.iter().map(|v| {
             let tag = LitInt::new(&format!("{}", tags[&v.name]), Span::call_site());
             let variant_ident = v.name.to_ident_native(None);
 
-            quote! { #tag => Self::#variant_ident(witx_gen::WasmValue::read(memory, offset + #contents_offset)) }
+            if let Some(ref tref) = v.tref {
+                let start = union_layout.contents_offset;
+                let end = union_layout.contents_offset + tref.mem_size_align().size;
+
+                quote! { #tag => Self::#variant_ident(witx_gen::WasmValue::read(&mem[#start..#end])) }
+            } else {
+                quote! { #tag => Self::#variant_ident(()) }
+            }
         });
 
         let write_impl = self.variants.iter().map(|v| {
             let tag = LitInt::new(&format!("{}", tags[&v.name]), Span::call_site());
             let variant_ident = v.name.to_ident_native(None);
 
-            quote! {
-                Self::#variant_ident(value) => {
-                    let tag: #tag_repr = #tag;
+            if let Some(ref tref) = v.tref {
+                let start = union_layout.contents_offset;
+                let end = union_layout.contents_offset + tref.mem_size_align().size;
 
-                    tag.write(memory, offset);
-                    value.write(memory, offset + #contents_offset);
+                quote! {
+                    Self::#variant_ident(value) => {
+                        let tag: #tag_repr = #tag;
+
+                        tag.write(&mem[..#tag_repr_size]);
+                        value.write(&mem[#start..#end]);
+                    }
+                }
+            } else {
+                quote! {
+                        Self::#variant_ident(value) => {
+                        let tag: #tag_repr = #tag;
+
+                        tag.write(&mem[..#tag_repr_size]);
+                    }
                 }
             }
         });
@@ -105,16 +127,19 @@ impl TypeDefinitionExtensions for UnionDatatype {
             #default_trait_impl
 
             impl witx_gen::WasmValue for #ident_native {
+                const SIZE: u32 = #size;
                 const ARRAY_OFFSET: u32 = #array_offset;
 
-                fn read(memory: &witx_gen::reexports::Memory, offset: u32) -> Self {
-                    match <#tag_repr as witx_gen::WasmValue>::read(memory, offset) {
-                       #( #read_impl, )*
-                       _ => Self::Unknown(Private(())),
-                    }
-                 }
+                fn read(mem: &[std::cell::Cell<u8>]) -> Self {
+                    assert_eq!(mem.len(), #size);
+                    match <#tag_repr as witx_gen::WasmValue>::read(&mem[..#tag_repr_size]) {
+                        #( #read_impl, )*
+                        _ => Self::Unknown(Private(())),
+                     }
+                }
 
-                fn write(self, memory: &witx_gen::reexports::Memory, offset: u32) {
+                fn write(self, mem: &[std::cell::Cell<u8>]) {
+                    assert_eq!(mem.len(), #size);
                     match self {
                         #( #write_impl )*
                         _ => panic!("Tried to write an invalid union value to WASM memory."),

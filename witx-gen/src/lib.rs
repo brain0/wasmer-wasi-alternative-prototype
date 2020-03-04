@@ -13,9 +13,11 @@
     variant_size_differences
 )]
 
-use std::{error::Error, fmt, marker::PhantomData, mem};
-use wasmer_runtime_core::memory::Memory;
+mod ptr;
 
+use std::{cell::Cell, error::Error, fmt, mem};
+
+pub use self::ptr::*;
 pub use witx_gen_macros::witx_gen;
 
 /// Trait to convert WASI values between the Rust and native WASM representation.
@@ -111,80 +113,6 @@ impl<T: WasiValue> fmt::Display for WasiValueError<T> {
 
 impl<T: WasiValue> Error for WasiValueError<T> {}
 
-/// Pointer to a WASM value.
-#[derive(Debug, Copy, Clone)]
-pub struct WasmValuePtr<T: WasmValue> {
-    offset: u32,
-    _phantom: PhantomData<fn(T) -> T>,
-}
-
-impl<T: WasmValue> WasmValuePtr<T> {
-    /// Reads the value from WASM memory.
-    pub fn read(self, memory: &Memory) -> T {
-        WasmValue::read(memory, self.offset)
-    }
-
-    /// Writes the value to WASM memory.
-    pub fn write(self, memory: &Memory, value: T) {
-        value.write(memory, self.offset);
-    }
-}
-
-/// Pointer to a WASM slice.
-#[derive(Debug, Copy, Clone)]
-pub struct WasmSlicePtr<T: WasmValue> {
-    offset: u32,
-    _phantom: PhantomData<fn(T) -> T>,
-}
-
-impl<T: WasmValue> WasmSlicePtr<T> {
-    /// Gets the value at the specified index.
-    pub fn get(self, index: u32) -> WasmValuePtr<T> {
-        WasmValuePtr {
-            offset: self.offset + index * T::ARRAY_OFFSET,
-            _phantom: PhantomData,
-        }
-    }
-
-    /// Adds an offset to this pointer.
-    pub fn add(self, offset: u32) -> WasmSlicePtr<T> {
-        WasmSlicePtr {
-            offset: self.offset + offset * T::ARRAY_OFFSET,
-            _phantom: PhantomData,
-        }
-    }
-}
-
-unsafe impl<T: WasmValue> wasmer_runtime_core::types::WasmExternType for WasmValuePtr<T> {
-    type Native = i32;
-
-    fn from_native(native: Self::Native) -> Self {
-        Self {
-            offset: native as u32,
-            _phantom: PhantomData,
-        }
-    }
-
-    fn to_native(self) -> Self::Native {
-        self.offset as i32
-    }
-}
-
-unsafe impl<T: WasmValue> wasmer_runtime_core::types::WasmExternType for WasmSlicePtr<T> {
-    type Native = i32;
-
-    fn from_native(native: Self::Native) -> Self {
-        Self {
-            offset: native as u32,
-            _phantom: PhantomData,
-        }
-    }
-
-    fn to_native(self) -> Self::Native {
-        self.offset as i32
-    }
-}
-
 /// Reexported items that are used inside the `witx_gen` macro.
 pub mod reexports {
     #[doc(no_inline)]
@@ -196,50 +124,49 @@ pub mod reexports {
 
 /// A value that can be stored into WASM memory.
 pub trait WasmValue: fmt::Debug + Copy {
+    /// Size of a value
+    const SIZE: u32;
     /// Offset between two elements of this type inside an array.
     const ARRAY_OFFSET: u32;
 
     /// Reads the value from memory at the given offset.
-    fn read(memory: &Memory, offset: u32) -> Self;
+    fn read(mem: &[Cell<u8>]) -> Self;
+
     /// Writes the value to memory at the given offset.
-    fn write(self, memory: &Memory, offset: u32);
-}
-
-impl WasmValue for u8 {
-    const ARRAY_OFFSET: u32 = mem::size_of::<u8>() as u32;
-
-    fn read(memory: &Memory, offset: u32) -> Self {
-        memory.view::<u8>()[offset as usize].get()
-    }
-
-    fn write(self, memory: &Memory, offset: u32) {
-        memory.view::<u8>()[offset as usize].set(self);
-    }
+    fn write(self, mem: &[Cell<u8>]);
 }
 
 macro_rules! primitive_wasmvalue_impl {
     ($t:ty) => {
         impl WasmValue for $t {
+            const SIZE: u32 = mem::size_of::<$t>() as u32;
             const ARRAY_OFFSET: u32 = mem::size_of::<$t>() as u32;
 
-            fn read(memory: &Memory, offset: u32) -> Self {
-                let mut bytes = [0u8; mem::size_of::<Self>()];
-                for i in 0..(mem::size_of::<Self>() as u32) {
-                    bytes[i as usize] = <u8 as WasmValue>::read(memory, offset + i);
+            fn read(mem: &[Cell<u8>]) -> Self {
+                const SIZE: usize = mem::size_of::<$t>();
+
+                assert_eq!(mem.len(), SIZE);
+                let mut bytes = [0u8; SIZE];
+                for i in 0..SIZE {
+                    bytes[i] = mem[i].get();
                 }
                 Self::from_le_bytes(bytes)
             }
 
-            fn write(self, memory: &Memory, offset: u32) {
+            fn write(self, mem: &[Cell<u8>]) {
+                const SIZE: usize = mem::size_of::<$t>();
+
+                assert_eq!(mem.len(), SIZE);
                 let bytes = self.to_le_bytes();
-                for i in 0..(mem::size_of::<Self>() as u32) {
-                    <u8 as WasmValue>::write(bytes[i as usize], memory, offset + i);
+                for i in 0..SIZE {
+                    mem[i].set(bytes[i])
                 }
             }
         }
     };
 }
 
+primitive_wasmvalue_impl!(u8);
 primitive_wasmvalue_impl!(i8);
 primitive_wasmvalue_impl!(u16);
 primitive_wasmvalue_impl!(i16);
@@ -249,33 +176,3 @@ primitive_wasmvalue_impl!(u64);
 primitive_wasmvalue_impl!(i64);
 primitive_wasmvalue_impl!(f32);
 primitive_wasmvalue_impl!(f64);
-
-impl<T: WasmValue> WasmValue for WasmValuePtr<T> {
-    const ARRAY_OFFSET: u32 = mem::size_of::<u32>() as u32;
-
-    fn read(memory: &Memory, offset: u32) -> Self {
-        WasmValuePtr {
-            offset: WasmValue::read(memory, offset),
-            _phantom: PhantomData,
-        }
-    }
-
-    fn write(self, memory: &Memory, offset: u32) {
-        self.offset.write(memory, offset);
-    }
-}
-
-impl<T: WasmValue> WasmValue for WasmSlicePtr<T> {
-    const ARRAY_OFFSET: u32 = mem::size_of::<u32>() as u32;
-
-    fn read(memory: &Memory, offset: u32) -> Self {
-        WasmSlicePtr {
-            offset: WasmValue::read(memory, offset),
-            _phantom: PhantomData,
-        }
-    }
-
-    fn write(self, memory: &Memory, offset: u32) {
-        self.offset.write(memory, offset);
-    }
-}

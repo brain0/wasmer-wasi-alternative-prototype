@@ -1,8 +1,9 @@
 use super::{
     type_ref_ext::TypeRefExt, StringExt, ToIdent, TokenStreamPair, TypeDefinitionExtensions,
 };
-use proc_macro2::TokenStream;
+use proc_macro2::{Span, TokenStream};
 use quote::quote;
+use syn::LitInt;
 use witx::{Id, Layout, StructDatatype, TypeRef};
 
 impl TypeDefinitionExtensions for StructDatatype {
@@ -24,19 +25,21 @@ impl TypeDefinitionExtensions for StructDatatype {
 
         let read_impl = member_layout.iter().map(|l| {
             let ident = l.member.name.to_ident_native(None);
-            let offset = l.offset as u32;
+            let start = l.offset;
+            let end = start + l.member.tref.mem_size_align().size;
 
             quote! {
-                #ident: witx_gen::WasmValue::read(memory, offset + #offset)
+                #ident: witx_gen::WasmValue::read(&mem[#start..#end])
             }
         });
 
         let write_impl = member_layout.iter().map(|l| {
             let ident = l.member.name.to_ident_native(None);
-            let offset = l.offset as u32;
+            let start = l.offset;
+            let end = start + l.member.tref.mem_size_align().size;
 
             quote! {
-                witx_gen::WasmValue::write(self.#ident, memory, offset + #offset);
+                witx_gen::WasmValue::write(self.#ident, &mem[#start..#end]);
             }
         });
 
@@ -48,6 +51,7 @@ impl TypeDefinitionExtensions for StructDatatype {
 
         let layout = self.mem_size_align();
 
+        let size = LitInt::new(&format!("{}", layout.size), Span::call_site());
         let array_offset = (layout.size + (layout.align - layout.size % layout.align)) as u32;
         assert!(array_offset % (layout.align as u32) == 0);
 
@@ -59,15 +63,18 @@ impl TypeDefinitionExtensions for StructDatatype {
             }
 
             impl witx_gen::WasmValue for #ident_native {
+                const SIZE: u32 = #size;
                 const ARRAY_OFFSET: u32 = #array_offset;
 
-                fn read(memory: &witx_gen::reexports::Memory, offset: u32) -> Self {
+                fn read(mem: &[std::cell::Cell<u8>]) -> Self {
+                    assert_eq!(mem.len(), #size);
                     Self {
                         #( #read_impl ),*
                     }
                 }
 
-                fn write(self, memory: &witx_gen::reexports::Memory, offset: u32) {
+                fn write(self, mem: &[std::cell::Cell<u8>]) {
+                    assert_eq!(mem.len(), #size);
                     #( #write_impl )*
                 }
             }

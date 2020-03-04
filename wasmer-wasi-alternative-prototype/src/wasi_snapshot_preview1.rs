@@ -89,16 +89,23 @@ impl<T> NativeWasiAdapter<T> {
         buf: WasmSlicePtr<u8>,
     ) -> native::errno {
         match strings {
-            Ok(args) => {
+            Ok(strings) => {
                 let mut index = 0;
-                for (i, s) in args.iter().enumerate() {
-                    ptrs.get(i as u32).write(memory, buf.add(index));
-                    for b in s.as_bytes().iter().copied() {
-                        buf.get(index).write(memory, b);
-                        index += 1;
+                let ptrs = ptrs.with(memory, strings.len() as u32);
+                for (i, s) in strings.iter().enumerate() {
+                    let buf = buf.add(index);
+                    ptrs.write(i as u32, buf);
+
+                    let s = s.as_bytes();
+                    let len = s.len() as u32;
+                    let buf = buf.with(memory, (s.len() + 1) as u32);
+
+                    for (i, b) in s.iter().copied().enumerate() {
+                        buf.write(i as u32, b);
                     }
-                    buf.get(index).write(memory, 0);
-                    index += 1;
+                    buf.write(len, 0);
+
+                    index += len + 1;
                 }
 
                 native::errno_success
@@ -125,7 +132,10 @@ impl<T> NativeWasiAdapter<T> {
         f: F,
         s: S,
     ) -> R {
-        let iovecs: Vec<_> = (0..iovs_len).map(|i| iovs.get(i).read(memory)).collect();
+        let iovecs: Vec<_> = {
+            let iovs = iovs.with(memory, iovs_len);
+            (0..iovs_len).map(|i| iovs.read(i)).collect()
+        };
 
         let mut bufs: Vec<_> = iovecs
             .iter()
@@ -142,12 +152,14 @@ impl<T> NativeWasiAdapter<T> {
                 let cur_wasm = iovecs[i as usize];
                 let cur_native = &buf_slices[i as usize];
 
+                let cur_wasm_slice = cur_wasm.buf.with(memory, cur_wasm.buf_len);
+
                 for j in 0..cur_wasm.buf_len {
                     if read >= size {
                         break 'outer;
                     }
 
-                    cur_wasm.buf.get(j).write(memory, cur_native[j as usize]);
+                    cur_wasm_slice.write(j, cur_native[j as usize]);
                     read += 1;
                 }
             }
@@ -168,6 +180,8 @@ impl<T> NativeWasiAdapter<T> {
         let result = f(&mut buf[..]);
         let size = s(&result);
 
+        let wasm_buf = wasm_buf.with(memory, wasm_buf_len);
+
         if size > 0 {
             let mut read = 0;
             for i in 0..wasm_buf_len {
@@ -175,7 +189,7 @@ impl<T> NativeWasiAdapter<T> {
                     break;
                 }
 
-                wasm_buf.get(i).write(memory, buf[i as usize]);
+                wasm_buf.write(i, buf[i as usize]);
                 read += 1;
             }
         }
