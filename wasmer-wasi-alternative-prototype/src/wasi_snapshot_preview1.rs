@@ -459,7 +459,7 @@ impl<T: WasiImports> NativeWasiImports for NativeWasiAdapter<T> {
         iovs_len: native::size,
         offset: native::filesize,
     ) -> (native::errno, native::size) {
-        todo!()
+        todo!("fd_pwrite")
     }
 
     fn fd_read(
@@ -488,7 +488,7 @@ impl<T: WasiImports> NativeWasiImports for NativeWasiAdapter<T> {
         buf_len: native::size,
         cookie: native::dircookie,
     ) -> (native::errno, native::size) {
-        todo!()
+        todo!("fd_readdir")
     }
 
     fn fd_renumber(&self, _ctx: &mut Ctx, fd: native::fd, to: native::fd) -> native::errno {
@@ -531,7 +531,7 @@ impl<T: WasiImports> NativeWasiImports for NativeWasiAdapter<T> {
         iovs: WasmSlicePtr<native::ciovec>,
         iovs_len: native::size,
     ) -> (native::errno, native::size) {
-        todo!()
+        todo!("fd_write")
     }
 
     fn path_create_directory(
@@ -541,7 +541,7 @@ impl<T: WasiImports> NativeWasiImports for NativeWasiAdapter<T> {
         path: WasmSlicePtr<u8>,
         path_len: native::size,
     ) -> native::errno {
-        todo!()
+        todo!("path_create_directory")
     }
 
     fn path_filestat_get(
@@ -552,7 +552,7 @@ impl<T: WasiImports> NativeWasiImports for NativeWasiAdapter<T> {
         path: WasmSlicePtr<u8>,
         path_len: native::size,
     ) -> (native::errno, native::filestat) {
-        todo!()
+        todo!("path_filestat_get")
     }
 
     fn path_filestat_set_times(
@@ -566,7 +566,7 @@ impl<T: WasiImports> NativeWasiImports for NativeWasiAdapter<T> {
         mtim: native::timestamp,
         fst_flags: native::fstflags,
     ) -> native::errno {
-        todo!()
+        todo!("path_filestat_set_times")
     }
 
     fn path_link(
@@ -580,7 +580,7 @@ impl<T: WasiImports> NativeWasiImports for NativeWasiAdapter<T> {
         new_path: WasmSlicePtr<u8>,
         new_path_len: native::size,
     ) -> native::errno {
-        todo!()
+        todo!("path_link")
     }
 
     fn path_open(
@@ -595,7 +595,7 @@ impl<T: WasiImports> NativeWasiImports for NativeWasiAdapter<T> {
         fs_rights_inherting: native::rights,
         fdflags: native::fdflags,
     ) -> (native::errno, native::fd) {
-        todo!()
+        todo!("path_open")
     }
 
     fn path_readlink(
@@ -607,7 +607,7 @@ impl<T: WasiImports> NativeWasiImports for NativeWasiAdapter<T> {
         buf: WasmSlicePtr<u8>,
         buf_len: native::size,
     ) -> (native::errno, native::size) {
-        todo!()
+        todo!("path_readlink")
     }
 
     fn path_remove_directory(
@@ -617,7 +617,7 @@ impl<T: WasiImports> NativeWasiImports for NativeWasiAdapter<T> {
         path: WasmSlicePtr<u8>,
         path_len: native::size,
     ) -> native::errno {
-        todo!()
+        todo!("path_remove_directory")
     }
 
     fn path_rename(
@@ -630,7 +630,7 @@ impl<T: WasiImports> NativeWasiImports for NativeWasiAdapter<T> {
         new_path: WasmSlicePtr<u8>,
         new_path_len: native::size,
     ) -> native::errno {
-        todo!()
+        todo!("path_rename")
     }
 
     fn path_symlink(
@@ -642,7 +642,7 @@ impl<T: WasiImports> NativeWasiImports for NativeWasiAdapter<T> {
         new_path: WasmSlicePtr<u8>,
         new_path_len: native::size,
     ) -> native::errno {
-        todo!()
+        todo!("path_symlink")
     }
 
     fn path_unlink_file(
@@ -652,7 +652,7 @@ impl<T: WasiImports> NativeWasiImports for NativeWasiAdapter<T> {
         path: WasmSlicePtr<u8>,
         path_len: native::size,
     ) -> native::errno {
-        todo!()
+        todo!("path_unlink_file")
     }
 
     fn poll_oneoff(
@@ -662,7 +662,7 @@ impl<T: WasiImports> NativeWasiImports for NativeWasiAdapter<T> {
         out: WasmSlicePtr<native::event>,
         nsubscriptions: native::size,
     ) -> (native::errno, native::size) {
-        todo!()
+        todo!("poll_oneoff")
     }
 
     fn proc_exit(
@@ -691,7 +691,7 @@ impl<T: WasiImports> NativeWasiImports for NativeWasiAdapter<T> {
         buf: WasmSlicePtr<u8>,
         buf_len: native::size,
     ) -> native::errno {
-        todo!()
+        todo!("random_get")
     }
 
     fn sock_recv(
@@ -702,7 +702,7 @@ impl<T: WasiImports> NativeWasiImports for NativeWasiAdapter<T> {
         ri_data_len: native::size,
         ri_flags: native::riflags,
     ) -> (native::errno, native::size, native::roflags) {
-        todo!()
+        todo!("sock_recv")
     }
 
     fn sock_send(
@@ -713,7 +713,7 @@ impl<T: WasiImports> NativeWasiImports for NativeWasiAdapter<T> {
         si_data_len: native::size,
         si_flags: native::siflags,
     ) -> (native::errno, native::size) {
-        todo!()
+        todo!("sock_send")
     }
 
     fn sock_shutdown(&self, _ctx: &mut Ctx, fd: native::fd, how: native::sdflags) -> native::errno {
