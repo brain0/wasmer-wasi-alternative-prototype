@@ -96,12 +96,14 @@ pub fn witx_gen(input: TokenStream) -> TokenStream {
 
     let wasi_trait_functions = wasi_module.funcs().map(|func| {
         let docs = func.docs.as_docs();
-        let param_docs = func.params.iter().map(|p| {
-            format!("* {}: {}", p.name.as_str(), p.docs).as_docs()
-        });
-        let result_docs = func.results.iter().map(|p| {
-            format!("* {}", p.docs).as_docs()
-        });
+        let param_docs = func
+            .params
+            .iter()
+            .map(|p| format!("* {}: {}", p.name.as_str(), p.docs).as_docs());
+        let result_docs = func
+            .results
+            .iter()
+            .map(|p| format!("* {}", p.docs).as_docs());
         let ident = func.name.to_ident_native(None);
 
         let params = func.params.iter().map(|p| {
@@ -120,15 +122,21 @@ pub fn witx_gen(input: TokenStream) -> TokenStream {
                 return quote! { #ident: witx_gen::WasmSlicePtr<#inner_type>, #len_ident: size };
             }
 
-            let tp =  p.tref.to_type();
+            let tp = p.tref.to_type();
             quote! { #ident: #tp }
         });
 
-        let results = func.results.iter().map(|p| {
-            let typename = p.tref.to_type();
+        let results = if func.results.len() == 0 && func.name.as_str() == "proc_exit" {
+            quote! { std::result::Result<std::convert::Infallible, exitcode> }
+        } else {
+            let results = func.results.iter().map(|p| {
+                let typename = p.tref.to_type();
 
-            quote! { #typename }
-        });
+                quote! { #typename }
+            });
+
+            quote! { ( #( #results ),* ) }
+        };
 
         quote! {
             #docs
@@ -137,7 +145,7 @@ pub fn witx_gen(input: TokenStream) -> TokenStream {
             #( #param_docs )*
             #[doc = "# Results"]
             #( #result_docs )*
-            fn #ident(&self, ctx: &mut witx_gen::reexports::Ctx, #( #params ),*) -> ( #( #results ),* );
+            fn #ident(&self, ctx: &mut witx_gen::reexports::Ctx, #( #params ),*) -> #results;
         }
     });
 
@@ -160,7 +168,7 @@ pub fn witx_gen(input: TokenStream) -> TokenStream {
                 return quote! { #ident: witx_gen::WasmSlicePtr<#inner_type>, #len_ident: size };
             }
 
-            let tp =  p.tref.to_type();
+            let tp = p.tref.to_type();
             quote! { #ident: #tp }
         });
 
@@ -182,14 +190,20 @@ pub fn witx_gen(input: TokenStream) -> TokenStream {
             quote! { #ident }
         });
 
-        let results = func.results.iter().map(|p| {
-            let typename = p.tref.to_type();
+        let results = if func.results.len() == 0 && func.name.as_str() == "proc_exit" {
+            quote! { std::result::Result<std::convert::Infallible, exitcode> }
+        } else {
+            let results = func.results.iter().map(|p| {
+                let typename = p.tref.to_type();
 
-            quote! { #typename }
-        });
+                quote! { #typename }
+            });
+
+            quote! { ( #( #results ),* ) }
+        };
 
         quote! {
-            fn #ident(&self, ctx: &mut witx_gen::reexports::Ctx, #( #params ),*) -> ( #( #results ),* ) {
+            fn #ident(&self, ctx: &mut witx_gen::reexports::Ctx, #( #params ),*) -> #results {
                 (**self).#ident(ctx, #( #param_names ),*)
             }
         }
@@ -268,8 +282,7 @@ pub fn witx_gen(input: TokenStream) -> TokenStream {
         });
 
         let result_return = match func.results.len() {
-            0 => proc_macro2::TokenStream::new(),
-            1 => quote! { result },
+            0 | 1 => quote! { result },
             _ => quote! { result.0 },
         };
 

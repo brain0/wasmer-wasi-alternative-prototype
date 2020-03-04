@@ -51,7 +51,7 @@ pub trait WasiImports: Send + Sync + 'static {
     fn fd_seek(&self, fd: Fd, offset: Filedelta, whence: Whence) -> WasiResult<Filesize>;
     fn fd_sync(&self, fd: Fd) -> WasiResult<()>;
     fn fd_tell(&self, fd: Fd) -> WasiResult<Filesize>;
-    fn proc_exit(&self, rval: Exitcode);
+    fn proc_exit(&self, rval: Exitcode) -> Result<std::convert::Infallible, Exitcode>;
     fn proc_raise(&self, sig: Signal) -> WasiResult<()>;
     fn sched_yield(&self) -> WasiResult<()>;
     fn sock_shutdown(&self, fd: Fd, how: Sdflags) -> WasiResult<()>;
@@ -665,8 +665,14 @@ impl<T: WasiImports> NativeWasiImports for NativeWasiAdapter<T> {
         todo!()
     }
 
-    fn proc_exit(&self, _ctx: &mut Ctx, rval: native::exitcode) {
-        self.0.proc_exit(Exitcode::from_native(rval).unwrap());
+    fn proc_exit(
+        &self,
+        _ctx: &mut Ctx,
+        rval: native::exitcode,
+    ) -> Result<std::convert::Infallible, native::exitcode> {
+        self.0
+            .proc_exit(Exitcode::from_native(rval).unwrap())
+            .map_err(|e| e.0)
     }
 
     fn proc_raise(&self, _ctx: &mut Ctx, sig: native::signal) -> native::errno {
