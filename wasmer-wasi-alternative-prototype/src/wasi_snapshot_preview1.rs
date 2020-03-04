@@ -1,4 +1,9 @@
 #![allow(unused_variables)]
+#![allow(missing_docs)]
+
+//! Implementation of types and interfaces for WASI snashot 1.
+//!
+//! This module is incomplete and lacks documentation.
 
 use self::native::{NativeWasiImports, NativeWasiImportsExt};
 use std::sync::Arc;

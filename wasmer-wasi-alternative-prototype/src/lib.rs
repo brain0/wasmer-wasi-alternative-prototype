@@ -3,6 +3,7 @@
 #![forbid(rust_2018_idioms, future_incompatible, elided_lifetimes_in_paths)]
 #![warn(
     missing_debug_implementations,
+    missing_docs,
     trivial_casts,
     trivial_numeric_casts,
     unreachable_pub,
