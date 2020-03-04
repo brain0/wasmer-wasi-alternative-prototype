@@ -86,6 +86,8 @@ pub fn witx_gen(input: TokenStream) -> TokenStream {
         .map(|tp| tp.tref.get_type_definitions(&tp.name, tp.docs.as_docs()))
         .fold(TokenStreamPair::new(), |output, defs| output.extend(defs));
 
+    // TODO: Clean this code up and move it out of this function and into a separate module.
+    //       There is lots of duplication here.
     let wasi_snapshot_id = Id::new(&version);
 
     let wasi_module = document
