@@ -3,4 +3,5 @@ members = [
     "witx-gen",
     "witx-gen-macros",
     "wasmer-wasi-alternative-prototype",
+    "wasm-demo",
 ]
