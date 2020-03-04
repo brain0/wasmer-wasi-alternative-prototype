@@ -1,0 +1,6 @@
+[workspace]
+members = [
+    "witx-gen",
+    "witx-gen-macros",
+    "wasmer-wasi-alternative-prototype",
+]
