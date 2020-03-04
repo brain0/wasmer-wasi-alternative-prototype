@@ -112,7 +112,7 @@ pub struct WasmMemorySlice<'a, T: WasmValue> {
 
 impl<'a, T: WasmValue> WasmMemorySlice<'a, T> {
     fn get_memory(&self, index: u32) -> &[Cell<u8>] {
-        let start = (index + T::ARRAY_OFFSET) as usize;
+        let start = (index * T::ARRAY_OFFSET) as usize;
         let end = start + T::SIZE as usize;
 
         &self.memory[start..end]
