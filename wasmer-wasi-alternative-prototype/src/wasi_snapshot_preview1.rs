@@ -98,7 +98,7 @@ impl<T> NativeWasiAdapter<T> {
 
                     let s = s.as_bytes();
                     let len = s.len() as u32;
-                    let buf = buf.with(memory, (s.len() + 1) as u32);
+                    let buf = buf.with(memory, len + 1);
 
                     for (i, b) in s.iter().copied().enumerate() {
                         buf.write(i as u32, b);
