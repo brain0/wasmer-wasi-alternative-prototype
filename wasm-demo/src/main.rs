@@ -1,3 +1,15 @@
+#![forbid(rust_2018_idioms, future_incompatible, elided_lifetimes_in_paths)]
+#![warn(
+    missing_debug_implementations,
+    trivial_casts,
+    trivial_numeric_casts,
+    unreachable_pub,
+    unused_extern_crates,
+    unused_import_braces,
+    unused_qualifications,
+    variant_size_differences
+)]
+
 use std::{env, fs::File, io::Read, string::String};
 use wasmer_runtime::{instantiate, Func};
 use wasmer_wasi_alternative_prototype::wasi_snapshot_preview1::*;
@@ -7,9 +19,20 @@ struct Wasi {
     environment: Vec<String>,
 }
 
+impl Wasi {
+    fn write_bufs<W: std::io::Write>(mut writer: W, bufs: &[&[u8]]) -> WasiResult<Size> {
+        for buf in bufs {
+            writer.write_all(buf).map_err(|_| Errno::Inval)?;
+        }
+        writer.flush().map_err(|_| Errno::Inval)?;
+
+        Ok(Size(bufs.iter().map(|b| b.len()).sum::<usize>() as u32))
+    }
+}
+
 impl WasiImports for Wasi {
     fn args_get(&self) -> WasiResult<&[String]> {
-        unimplemented!("args_get")
+        Ok(&self.arguments[..])
     }
 
     fn environ_get(&self) -> WasiResult<&[String]> {
@@ -82,8 +105,16 @@ impl WasiImports for Wasi {
         unimplemented!("fd_prestat_dir_name")
     }
 
+    fn fd_pwrite(&self, _: Fd, _: &[&[u8]], _: Filesize) -> WasiResult<Size> {
+        unimplemented!("fd_pwrite")
+    }
+
     fn fd_read(&self, _: Fd, _: &[&mut [u8]]) -> WasiResult<Size> {
         unimplemented!("fd_read")
+    }
+
+    fn fd_readdir(&self, _: Fd, _: Dircookie) -> WasiResult<Option<(Dirent, String)>> {
+        unimplemented!("fd_readdir")
     }
 
     fn fd_renumber(&self, _: Fd, _: Fd) -> WasiResult<()> {
@@ -100,6 +131,14 @@ impl WasiImports for Wasi {
 
     fn fd_tell(&self, _: Fd) -> WasiResult<Filesize> {
         unimplemented!("fd_tell")
+    }
+
+    fn fd_write(&self, fd: Fd, bufs: &[&[u8]]) -> WasiResult<Size> {
+        match fd.0 {
+            1 => Self::write_bufs(std::io::stdout(), bufs),
+            2 => Self::write_bufs(std::io::stderr(), bufs),
+            _ => Err(Errno::Badf)?,
+        }
     }
 
     fn proc_exit(&self, c: Exitcode) -> Result<std::convert::Infallible, Exitcode> {
@@ -132,6 +171,8 @@ fn main() {
         environment,
     };
 
+    eprintln!("Compiling WASI ...");
+
     let instance = {
         let mut wasm = Vec::new();
 
@@ -144,17 +185,21 @@ fn main() {
         instantiate(&wasm[..], &import_object).expect("Failed to instantiate")
     };
 
-    let start: Func<()> = instance
+    eprintln!("Looking for entry point ...");
+
+    let start: Func<'_, ()> = instance
         .func("_start")
         .expect("Unable to find _start function");
+
+    eprintln!("Running WASI binary ...");
 
     let code = match start.call() {
         Ok(()) => 0,
         Err(e) => match e.0.downcast_ref::<native::exitcode>() {
             Some(&code) => code,
             None => panic!("Failed to get exit code."),
-        }
+        },
     };
 
-    println!("WASI program exited with exit code {}.", code);
+    eprintln!("WASI program exited with exit code {}.", code);
 }

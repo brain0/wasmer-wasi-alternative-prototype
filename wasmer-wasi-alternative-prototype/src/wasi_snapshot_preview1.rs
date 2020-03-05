@@ -6,10 +6,10 @@
 //! This module is incomplete and lacks documentation.
 
 use self::native::{NativeWasiImports, NativeWasiImportsExt};
-use std::sync::Arc;
+use std::{cell::Cell, sync::Arc};
 use witx_gen::{
     reexports::{Ctx, ImportObject, Memory},
-    witx_gen, WasiValue, WasmSlicePtr,
+    witx_gen, WasiValue, WasmSlicePtr, WasmValue,
 };
 
 witx_gen!("wasi_snapshot_preview1" => "WASI/phases/snapshot/witx/wasi_snapshot_preview1.witx");
@@ -46,11 +46,14 @@ pub trait WasiImports: Send + Sync + 'static {
     fn fd_pread(&self, fd: Fd, iovs: &[&mut [u8]], offset: Filesize) -> WasiResult<Size>;
     fn fd_prestat_get(&self, fd: Fd) -> WasiResult<Prestat>;
     fn fd_prestat_dir_name(&self, fd: Fd) -> WasiResult<String>;
+    fn fd_pwrite(&self, fd: Fd, bufs: &[&[u8]], offset: Filesize) -> WasiResult<Size>;
     fn fd_read(&self, fd: Fd, iovs: &[&mut [u8]]) -> WasiResult<Size>;
+    fn fd_readdir(&self, fd: Fd, cookie: Dircookie) -> WasiResult<Option<(Dirent, String)>>;
     fn fd_renumber(&self, fd: Fd, to: Fd) -> WasiResult<()>;
     fn fd_seek(&self, fd: Fd, offset: Filedelta, whence: Whence) -> WasiResult<Filesize>;
     fn fd_sync(&self, fd: Fd) -> WasiResult<()>;
     fn fd_tell(&self, fd: Fd) -> WasiResult<Filesize>;
+    fn fd_write(&self, fd: Fd, bufs: &[&[u8]]) -> WasiResult<Size>;
     fn proc_exit(&self, rval: Exitcode) -> Result<std::convert::Infallible, Exitcode>;
     fn proc_raise(&self, sig: Signal) -> WasiResult<()>;
     fn sched_yield(&self) -> WasiResult<()>;
@@ -123,6 +126,33 @@ impl<T> NativeWasiAdapter<T> {
             ),
             Err(err) => (err.to_native(), 0, 0),
         }
+    }
+
+    fn read_from_bufs(
+        memory: &Memory,
+        iovs: WasmSlicePtr<native::ciovec>,
+        iovs_len: native::size,
+    ) -> Vec<Vec<u8>> {
+        let iovs = iovs.with(memory, iovs_len);
+
+        (0..iovs_len)
+            .map(|i| {
+                let native::ciovec { buf, buf_len } = iovs.read(i);
+                let iov = buf.with(memory, buf_len);
+
+                (0..buf_len).map(|i| iov.read(i)).collect()
+            })
+            .collect()
+    }
+
+    fn read_from_buf(
+        memory: &Memory,
+        wasm_buf: WasmSlicePtr<u8>,
+        wasm_buf_len: native::size,
+    ) -> Vec<u8> {
+        let wasm_buf = wasm_buf.with(memory, wasm_buf_len);
+
+        (0..wasm_buf_len).map(|i| wasm_buf.read(i)).collect()
     }
 
     fn write_to_bufs<F: FnOnce(&[&mut [u8]]) -> R, S: FnOnce(&R) -> native::size, R>(
@@ -459,7 +489,13 @@ impl<T: WasiImports> NativeWasiImports for NativeWasiAdapter<T> {
         iovs_len: native::size,
         offset: native::filesize,
     ) -> (native::errno, native::size) {
-        todo!("fd_pwrite")
+        let fd = try1!(Fd::from_native(fd));
+        let offset = try1!(Filesize::from_native(offset));
+        let data = Self::read_from_bufs(ctx.memory(0), iovs, iovs_len);
+
+        let slices: Vec<_> = data.iter().map(|v| &v[..]).collect();
+
+        to_result1!(self.0.fd_pwrite(fd, &slices[..], offset))
     }
 
     fn fd_read(
@@ -488,7 +524,45 @@ impl<T: WasiImports> NativeWasiImports for NativeWasiAdapter<T> {
         buf_len: native::size,
         cookie: native::dircookie,
     ) -> (native::errno, native::size) {
-        todo!("fd_readdir")
+        let fd = try1!(Fd::from_native(fd));
+        let mut cookie = try1!(Dircookie::from_native(cookie));
+        let mut dirent_buf = [0u8; <native::dirent as WasmValue>::SIZE as usize];
+
+        let buf = buf.with(ctx.memory(0), buf_len);
+        let mut offset = 0;
+
+        'outer: while offset < buf_len {
+            let (entry, name) = match try1!(self.0.fd_readdir(fd, cookie)) {
+                Some(entry) => entry,
+                None => break,
+            };
+
+            entry
+                .to_native()
+                .write(&Cell::from_mut(&mut dirent_buf[..]).as_slice_of_cells());
+
+            for i in 0..dirent_buf.len() {
+                buf.write(offset, dirent_buf[i]);
+                offset += 1;
+                if offset == buf_len {
+                    break 'outer;
+                }
+            }
+
+            let name = name.as_bytes();
+            assert_eq!(name.len() as u32, entry.DNamlen.0);
+            for i in 0..entry.DNamlen.0 as usize {
+                buf.write(offset, name[i]);
+                offset += 1;
+                if offset == buf_len {
+                    break 'outer;
+                }
+            }
+
+            cookie = entry.DNext;
+        }
+
+        (native::errno_success, offset)
     }
 
     fn fd_renumber(&self, _ctx: &mut Ctx, fd: native::fd, to: native::fd) -> native::errno {
@@ -531,7 +605,12 @@ impl<T: WasiImports> NativeWasiImports for NativeWasiAdapter<T> {
         iovs: WasmSlicePtr<native::ciovec>,
         iovs_len: native::size,
     ) -> (native::errno, native::size) {
-        todo!("fd_write")
+        let fd = try1!(Fd::from_native(fd));
+        let data = Self::read_from_bufs(ctx.memory(0), iovs, iovs_len);
+
+        let slices: Vec<_> = data.iter().map(|v| &v[..]).collect();
+
+        to_result1!(self.0.fd_write(fd, &slices[..]))
     }
 
     fn path_create_directory(
