@@ -23,7 +23,7 @@ impl TypeDefinitionExtensions for HandleDatatype {
 
             impl witx_gen::WasiValue for #ident {
                 type NativeType = native::#native_ident;
-                fn from_native(native: Self::NativeType) -> Result<Self, witx_gen::WasiValueError<Self>> {
+                fn from_native(native: Self::NativeType) -> std::result::Result<Self, witx_gen::WasiValueError<Self>> {
                     Ok(Self(native))
                 }
                 fn to_native(self) -> Self::NativeType {

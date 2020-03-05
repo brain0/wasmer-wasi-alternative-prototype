@@ -57,9 +57,9 @@ impl TypeDefinitionExtensions for UnionDatatype {
             let variant_ident = self.variants[0].name.to_ident_native(None);
 
             quote! {
-                impl Default for #ident_native {
+                impl std::default::Default for #ident_native {
                     fn default() -> Self {
-                        Self::#variant_ident(Default::default())
+                        Self::#variant_ident(std::default::Default::default())
                     }
                 }
             }
@@ -196,7 +196,7 @@ impl TypeDefinitionExtensions for UnionDatatype {
                 impl witx_gen::WasiValue for #ident {
                     type NativeType = self::native::#ident_native;
 
-                    fn from_native(native: Self::NativeType) -> Result<Self, witx_gen::WasiValueError<Self>> {
+                    fn from_native(native: Self::NativeType) -> std::result::Result<Self, witx_gen::WasiValueError<Self>> {
                         Ok(match native {
                             #( #variant_conversion, )*
                             Self::NativeType::Unknown(_) => Err(witx_gen::WasiValueError::from_unknown(native))?,

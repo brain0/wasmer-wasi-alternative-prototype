@@ -126,7 +126,7 @@ impl TypeDefinitionExtensions for StructDatatype {
                 impl witx_gen::WasiValue for #ident {
                     type NativeType = self::native::#ident_native;
 
-                    fn from_native(native: Self::NativeType) -> Result<Self, witx_gen::WasiValueError<Self>> {
+                    fn from_native(native: Self::NativeType) -> std::result::Result<Self, witx_gen::WasiValueError<Self>> {
                         Ok(Self {
                             #( #field_conversion, )*
                         })

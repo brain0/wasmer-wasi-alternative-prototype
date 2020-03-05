@@ -55,7 +55,7 @@ impl TypeDefinitionExtensions for FlagsDatatype {
             impl witx_gen::WasiValue for #ident {
                 type NativeType = #repr;
 
-                fn from_native(native: Self::NativeType) -> Result<Self, witx_gen::WasiValueError<Self>> {
+                fn from_native(native: Self::NativeType) -> std::result::Result<Self, witx_gen::WasiValueError<Self>> {
                     Self::from_bits(native).ok_or(witx_gen::WasiValueError::from_native(native))
                 }
 
