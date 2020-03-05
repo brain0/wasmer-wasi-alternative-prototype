@@ -851,8 +851,8 @@ impl<T: WasiImports> NativeWasiImports for NativeWasiAdapter<T> {
             }
 
             let name = <T as WasiImports>::StringRepresentation::owned_as_bytes(&name);
-            assert_eq!(name.len() as u32, entry.DNamlen.0);
-            for i in 0..entry.DNamlen.0 as usize {
+            assert_eq!(name.len() as u32, entry.d_namlen.0);
+            for i in 0..entry.d_namlen.0 as usize {
                 buf.write(offset, name[i]);
                 offset += 1;
                 if offset == buf_len {
@@ -860,7 +860,7 @@ impl<T: WasiImports> NativeWasiImports for NativeWasiAdapter<T> {
                 }
             }
 
-            cookie = entry.DNext;
+            cookie = entry.d_next;
         }
 
         (native::errno_success, offset)

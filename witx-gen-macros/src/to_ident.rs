@@ -6,6 +6,7 @@ use witx::Id;
 pub(crate) trait ToIdent {
     fn to_ident(&self) -> Ident;
     fn to_ident_native(&self, prefix: Option<&str>) -> Ident;
+    fn to_ident_upper(&self) -> Ident;
 }
 
 impl ToIdent for str {
@@ -55,6 +56,10 @@ impl ToIdent for str {
         let stream = TokenStream::from_str(name).expect("Could not parse identifier");
         parse2(stream).expect(&format!("Could not create identifier"))
     }
+
+    fn to_ident_upper(&self) -> Ident {
+        Ident::new(&self.to_uppercase(), Span::call_site())
+    }
 }
 
 impl ToIdent for Id {
@@ -64,6 +69,10 @@ impl ToIdent for Id {
 
     fn to_ident_native(&self, prefix: Option<&str>) -> Ident {
         self.as_str().to_ident_native(prefix)
+    }
+
+    fn to_ident_upper(&self) -> Ident {
+        self.as_str().to_ident_upper()
     }
 }
 

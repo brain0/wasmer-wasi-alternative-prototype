@@ -33,7 +33,7 @@ impl TypeDefinitionExtensions for FlagsDatatype {
 
         let consts = self.flags.iter().map(|f| {
             let docs = f.docs.as_docs();
-            let flag_ident = f.name.to_ident();
+            let flag_ident = f.name.to_ident_upper();
             let flag_ident_native = f.name.to_ident_native(Some(ident.as_str()));
 
             quote! {

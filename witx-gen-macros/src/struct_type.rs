@@ -84,7 +84,7 @@ impl TypeDefinitionExtensions for StructDatatype {
         let mapped = if self.has_rust_value() {
             let fields = self.members.iter().map(|m| {
                 let docs = m.docs.as_docs();
-                let field_ident = m.name.to_ident();
+                let field_ident = m.name.to_ident_native(None);
                 let field_type = match m.tref {
                     TypeRef::Name(ref named_type) => named_type.name.to_ident(),
                     _ => panic!(
@@ -101,17 +101,15 @@ impl TypeDefinitionExtensions for StructDatatype {
             });
 
             let field_conversion = self.members.iter().map(|m| {
-                let field_ident_native = m.name.to_ident_native(None);
-                let field_ident = m.name.to_ident();
+                let field_ident = m.name.to_ident_native(None);
 
-                quote! { #field_ident: witx_gen::try_from_native!(native, native.#field_ident_native) }
+                quote! { #field_ident: witx_gen::try_from_native!(native, native.#field_ident) }
             });
 
             let field_conversion_back = self.members.iter().map(|m| {
-                let field_ident_native = m.name.to_ident_native(None);
-                let field_ident = m.name.to_ident();
+                let field_ident = m.name.to_ident_native(None);
 
-                quote! { #field_ident_native: self.#field_ident.to_native() }
+                quote! { #field_ident: self.#field_ident.to_native() }
             });
 
             let ident = ident.to_ident();
