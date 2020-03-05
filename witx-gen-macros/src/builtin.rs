@@ -1,4 +1,6 @@
-use super::{builtin_type_ext::BuiltinTypeExt, ToIdent, TokenStreamPair, TypeDefinitionExtensions};
+use super::{
+    builtin_type_ext::BuiltinTypeExt, to_ident::ToIdent, TokenStreamPair, TypeDefinitionExtensions,
+};
 use proc_macro2::TokenStream;
 use quote::quote;
 use witx::{BuiltinType, Id};

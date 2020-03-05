@@ -1,5 +1,6 @@
 use super::{
-    type_ref_ext::TypeRefExt, StringExt, ToIdent, TokenStreamPair, TypeDefinitionExtensions,
+    to_ident::ToIdent, type_ref_ext::TypeRefExt, StringExt, TokenStreamPair,
+    TypeDefinitionExtensions,
 };
 use proc_macro2::{Span, TokenStream};
 use quote::quote;

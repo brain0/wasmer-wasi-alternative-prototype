@@ -12,8 +12,8 @@
 #![allow(unused_variables)]
 
 use std::{env, fs::File, io::Read, string::String};
-use wasmer_runtime::{instantiate, Func};
 use wasihost_core::wasi_snapshot_preview1::*;
+use wasmer_runtime::{instantiate, Func};
 
 struct Wasi {
     arguments: Vec<String>,

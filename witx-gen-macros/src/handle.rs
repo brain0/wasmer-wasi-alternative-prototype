@@ -1,4 +1,4 @@
-use super::{ToIdent, TokenStreamPair, TypeDefinitionExtensions};
+use super::{to_ident::ToIdent, TokenStreamPair, TypeDefinitionExtensions};
 use proc_macro2::TokenStream;
 use quote::quote;
 use witx::{HandleDatatype, Id};

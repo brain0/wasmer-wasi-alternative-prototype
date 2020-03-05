@@ -1,4 +1,4 @@
-use super::{builtin_type_ext::BuiltinTypeExt, ToIdent};
+use super::{builtin_type_ext::BuiltinTypeExt, to_ident::ToIdent};
 use proc_macro2::TokenStream;
 use quote::{quote, ToTokens};
 use std::rc::Rc;

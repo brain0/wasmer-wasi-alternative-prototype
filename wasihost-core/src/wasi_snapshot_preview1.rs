@@ -12,7 +12,6 @@ use witx_gen::{
 };
 
 witx_gen!("wasi_snapshot_preview1" => "WASI/phases/snapshot/witx/wasi_snapshot_preview1.witx");
-//include!("../../macro_debug.rs");
 
 pub type WasiResult<T> = Result<T, Errno>;
 
