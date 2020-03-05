@@ -29,15 +29,22 @@ impl TokenStreamPair {
         let Self { native, mapped } = self;
 
         quote! {
-            #[allow(nonstandard_style)]
-            pub mod native {
-                #native
+            #[allow(missing_docs)]
+            mod generated {
+                #[allow(nonstandard_style)]
+                /// Native WASI types. These types can be written to and read from WASM memory.
+                pub mod native {
+                    #native
 
-                #[doc(hidden)]
-                #[derive(Copy, Clone, Debug)]
-                pub struct Private(());
+                    #[doc(hidden)]
+                    #[derive(Copy, Clone, Debug)]
+                    pub struct Private(());
+                }
+
+                #mapped
             }
-            #mapped
+
+            pub use self::generated::*;
         }
     }
 }

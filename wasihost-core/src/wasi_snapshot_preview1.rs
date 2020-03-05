@@ -1,5 +1,3 @@
-#![allow(missing_docs)]
-
 //! Implementation of types and interfaces for WASI snapshot 1.
 //!
 //! This module is incomplete and lacks documentation.
@@ -13,27 +11,80 @@ use witx_gen::{
 
 witx_gen!("wasi_snapshot_preview1" => "WASI/phases/snapshot/witx/wasi_snapshot_preview1.witx");
 
+/// Result type for WASI methods.
 pub type WasiResult<T> = Result<T, Errno>;
 
+/// Functions necessary to satisfy the WASI specification.
 pub trait WasiImports: Send + Sync + 'static {
+    /// Gets the command-line parameters.
     fn args_get(&self) -> WasiResult<&[String]>;
+
+    /// Gets the environment. Is is common convention that each string is of the form
+    /// `key=value`.
     fn environ_get(&self) -> WasiResult<&[String]>;
+
+    /// Return the resolution of a clock. Implementations are required to provide a non-zero value for
+    /// supported clocks. For unsupported clocks, return `Err(Errno::Inval)`.
+    ///
+    /// Note: This is similar to `clock_getres` in POSIX.
     fn clock_res_get(&self, id: Clockid) -> WasiResult<Timestamp>;
+
+    /// Return the time value of a clock.
+    ///
+    /// Note: This is similar to `clock_gettime` in POSIX.
     fn clock_time_get(&self, id: Clockid, precision: Timestamp) -> WasiResult<Timestamp>;
+
+    /// Provide file advisory information on a file descriptor.
+    ///
+    /// Note: This is similar to `posix_fadvise` in POSIX.
     fn fd_advise(&self, fd: Fd, offset: Filesize, len: Filesize, advice: Advice) -> WasiResult<()>;
+
+    /// Force the allocation of space in a file.
+    ///
+    /// Note: This is similar to `posix_fallocate` in POSIX.
     fn fd_allocate(&self, fd: Fd, offset: Filesize, len: Filesize) -> WasiResult<()>;
+
+    /// Close a file descriptor.
+    ///
+    /// Note: This is similar to `close` in POSIX.
     fn fd_close(&self, fd: Fd) -> WasiResult<()>;
+
+    /// Synchronize the data of a file to disk.
+    ///
+    /// Note: This is similar to `fdatasync` in POSIX.
     fn fd_datasync(&self, fd: Fd) -> WasiResult<()>;
+
+    /// Get the attributes of a file descriptor.
+    ///
+    /// Note: This returns similar flags to `fsync(fd, F_GETFL)` in POSIX, as well as additional fields.
     fn fd_fdstat_get(&self, fd: Fd) -> WasiResult<Fdstat>;
+
+    /// Adjust the flags associated with a file descriptor.
+    ///
+    /// Note: This is similar to `fcntl(fd, F_SETFL, flags)` in POSIX.
     fn fd_fdstat_set_flags(&self, fd: Fd, flags: Fdflags) -> WasiResult<()>;
+
+    /// Adjust the rights associated with a file descriptor. This can only be used to remove rights,
+    /// and returns `Err(Errno::Notcapable)` if called in a way that would attempt to add rights.
     fn fd_fdstat_set_rights(
         &self,
         fd: Fd,
         fs_rights_base: Rights,
         fs_rights_inheriting: Rights,
     ) -> WasiResult<()>;
+
+    /// Return the attributes of an open file.
     fn fd_filestat_get(&self, fd: Fd) -> WasiResult<Filestat>;
+
+    /// Adjust the size of an open file. If this increases the file's size, the extra bytes are filled
+    /// with zeros.
+    ///
+    /// Note: This is similar to `ftruncate` in POSIX.
     fn fd_filestat_set_size(&self, fd: Fd, size: Filesize) -> WasiResult<()>;
+
+    /// Adjust the timestamps of an open file or directory.
+    ///
+    /// Note: This is similar to `futimens` in POSIX.
     fn fd_filestat_set_times(
         &self,
         fd: Fd,
@@ -41,19 +92,73 @@ pub trait WasiImports: Send + Sync + 'static {
         mtim: Timestamp,
         fst_flags: Fstflags,
     ) -> WasiResult<()>;
+
+    /// Read from a file descriptor, without using and updating the file descriptor's offset.
+    ///
+    /// Note: This is similar to `preadv` in POSIX.
     fn fd_pread(&self, fd: Fd, iovs: &[&mut [u8]], offset: Filesize) -> WasiResult<Size>;
+
+    /// Return a description of the given preopened file descriptor.
     fn fd_prestat_get(&self, fd: Fd) -> WasiResult<Prestat>;
+
+    /// Return the directory name of the given preopened file descriptor.
     fn fd_prestat_dir_name(&self, fd: Fd) -> WasiResult<String>;
+
+    /// Write to a file descriptor, without using and updating the file descriptor's offset.
+    ///
+    /// Note: This is similar to `pwritev` in POSIX.
     fn fd_pwrite(&self, fd: Fd, bufs: &[&[u8]], offset: Filesize) -> WasiResult<Size>;
+
+    /// Read from a file descriptor.
+    ///
+    /// Note: This is similar to `readv` in POSIX.
     fn fd_read(&self, fd: Fd, iovs: &[&mut [u8]]) -> WasiResult<Size>;
+
+    /// Read one directory entry from a directory.
+    ///
+    /// The cookie of first entry in a directory is always `Dircookie(0)`.
     fn fd_readdir(&self, fd: Fd, cookie: Dircookie) -> WasiResult<Option<(Dirent, String)>>;
+
+    /// Atomically replace a file descriptor by renumbering another file descriptor. Due to the strong
+    /// focus on thread safety, this environment does not provide a mechanism to duplicate or renumber
+    /// a file descriptor to an arbitrary number, like dup2(). This would be prone to race conditions,
+    /// as an actual file descriptor with the same number could be allocated by a different thread at
+    /// the same time.
     fn fd_renumber(&self, fd: Fd, to: Fd) -> WasiResult<()>;
+
+    /// Move the offset of a file descriptor.
+    ///
+    /// Note: This is similar to `lseek` in POSIX.
     fn fd_seek(&self, fd: Fd, offset: Filedelta, whence: Whence) -> WasiResult<Filesize>;
+
+    /// Synchronize the data and metadata of a file to disk.
+    ///
+    /// Note: This is similar to `fsync` in POSIX.
     fn fd_sync(&self, fd: Fd) -> WasiResult<()>;
+
+    /// Return the current offset of a file descriptor.
+    ///
+    /// Note: This is similar to `lseek(fd, 0, SEEK_CUR)` in POSIX.
     fn fd_tell(&self, fd: Fd) -> WasiResult<Filesize>;
+
+    /// Write to a file descriptor.
+    ///
+    /// Note: This is similar to `writev` in POSIX.
     fn fd_write(&self, fd: Fd, bufs: &[&[u8]]) -> WasiResult<Size>;
+
+    /// Create a directory.
+    ///
+    /// Note: This is similar to `mkdirat` in POSIX.
     fn path_create_directory(&self, fd: Fd, path: &str) -> WasiResult<()>;
+
+    /// Return the attributes of a file or directory.
+    ///
+    /// Note: This is similar to `stat` in POSIX.
     fn path_filestat_get(&self, fd: Fd, flags: Lookupflags, path: &str) -> WasiResult<Filestat>;
+
+    /// Adjust the timestamps of a file or directory.
+    ///
+    /// Note: This is similar to `utimensat` in POSIX.
     fn path_filestat_set_times(
         &self,
         fd: Fd,
@@ -63,6 +168,25 @@ pub trait WasiImports: Send + Sync + 'static {
         mtim: Timestamp,
         fst_flags: Fstflags,
     ) -> WasiResult<()>;
+
+    /// Create a hard link.
+    ///
+    /// Note: This is similar to `linkat` in POSIX.
+    fn path_link(
+        &self,
+        old_fd: Fd,
+        old_flags: Lookupflags,
+        old_path: &str,
+        new_fd: Fd,
+        new_path: &str,
+    ) -> WasiResult<()>;
+
+    /// Open a file or directory. The returned file descriptor is not guaranteed to be the lowest-numbered
+    /// file descriptor not currently open; it is randomized to prevent applications from depending on making
+    /// assumptions about indexes, since this is error-prone in multi-threaded contexts. The returned file
+    /// descriptor is guaranteed to be less than 2^31.
+    ///
+    /// Note: This is similar to `openat` in POSIX.
     fn path_open(
         &self,
         fd: Fd,
@@ -73,35 +197,83 @@ pub trait WasiImports: Send + Sync + 'static {
         fs_rights_inheriting: Rights,
         fdflags: Fdflags,
     ) -> WasiResult<Fd>;
-    fn path_link(
-        &self,
-        old_fd: Fd,
-        old_flags: Lookupflags,
-        old_path: &str,
-        new_fd: Fd,
-        new_path: &str,
-    ) -> WasiResult<()>;
+
+    /// Read the contents of a symbolic link.
+    ///
+    /// Note: This is similar to `readlinkat` in POSIX.
     fn path_readlink(&self, fd: Fd, path: &str) -> WasiResult<String>;
+
+    /// Remove a directory. Return `Err(Errno::Notempty)` if the directory is not empty.
+    ///
+    /// Note: This is similar to `unlinkat(fd, path, AT_REMOVEDIR)` in POSIX.
     fn path_remove_directory(&self, fd: Fd, path: &str) -> WasiResult<()>;
+
+    /// Rename a file or directory.
+    ///
+    /// Note: This is similar to `renameat` in POSIX.
     fn path_rename(&self, fd: Fd, old_path: &str, new_fd: Fd, new_path: &str) -> WasiResult<()>;
+
+    /// Create a symbolic link.
+    ///
+    /// Note: This is similar to `symlinkat` in POSIX.
     fn path_symlink(&self, old_path: &str, fd: Fd, new_path: &str) -> WasiResult<()>;
+
+    /// Unlink a file. Return `Err(Errno::Isdir)` if the path refers to a directory.
+    ///
+    /// Note: This is similar to `unlinkat(fd, path, 0)` in POSIX.
     fn path_unlink_file(&self, fd: Fd, path: &str) -> WasiResult<()>;
+
+    /// Concurrently poll for the occurrence of a set of events.
     fn poll_oneoff(&self, subscriptions: &[Subscription]) -> WasiResult<Vec<Event>>;
+
+    /// Terminate the process normally. An exit code of 0 indicates successful termination of the program.
+    /// The meanings of other values is dependent on the environment.
+    ///
+    /// Implementations should always return `Err(rval)`.
     fn proc_exit(&self, rval: Exitcode) -> Result<std::convert::Infallible, Exitcode>;
+
+    /// Send a signal to the process of the calling thread.
+    ///
+    /// Note: This is similar to `raise` in POSIX.
     fn proc_raise(&self, sig: Signal) -> WasiResult<()>;
+
+    /// Write high-quality random data into a buffer. This function blocks when the implementation is
+    /// unable to immediately provide sufficient high-quality random data. This function may execute slowly,
+    /// so when large mounts of random data are required, it's advisable to use this function to seed a
+    /// pseudo-random number generator, rather than to provide the random data directly.
     fn random_get(&self, buf: &mut [u8]) -> WasiResult<()>;
+
+    /// Temporarily yield execution of the calling thread.
+    ///
+    /// Note: This is similar to `sched_yield` in POSIX.
     fn sched_yield(&self) -> WasiResult<()>;
+
+    /// Receive a message from a socket.
+    ///
+    /// Note: This is similar to `recv` in POSIX, though it also supports reading the data into multiple
+    /// buffers in the manner of `readv`.
     fn sock_recv(
         &self,
         fd: Fd,
         ri_data: &[&mut [u8]],
         ri_flags: Riflags,
     ) -> WasiResult<(Size, Roflags)>;
+
+    /// Send a message on a socket.
+    ///
+    /// Note: This is similar to `send` in POSIX, though it also supports writing the data from multiple buffers
+    /// in the manner of `writev`.
     fn sock_send(&self, fd: Fd, si_data: &[&[u8]], si_flags: Siflags) -> WasiResult<Size>;
+
+    /// Shut down socket send and receive channels.
+    ///
+    /// Note: This is similar to `shutdown` in POSIX.
     fn sock_shutdown(&self, fd: Fd, how: Sdflags) -> WasiResult<()>;
 }
 
+/// Extension methods for the [`WasiImports`](trait.WasiImports.html) trait.
 pub trait WasiImportsExt {
+    /// Generates the imports for this object.
     fn into_imports(self) -> ImportObject;
 }
 
