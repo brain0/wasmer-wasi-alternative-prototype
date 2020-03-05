@@ -13,4 +13,5 @@
     variant_size_differences
 )]
 
+pub mod string_representation;
 pub mod wasi_snapshot_preview1;

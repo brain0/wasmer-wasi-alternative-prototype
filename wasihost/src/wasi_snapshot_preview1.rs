@@ -1,28 +1,30 @@
 //! High-level abstraction for executing binaries conforming to WASI snapshot preview 1.
 
-use std::{error::Error, fs::File, io::Read, path::Path, sync::Arc};
-use wasihost_core::wasi_snapshot_preview1::*;
+use std::{error::Error, fs::File, io::Read, marker::PhantomData, path::Path, sync::Arc};
+use wasihost_core::{string_representation::StringRepresentation, wasi_snapshot_preview1::*};
 use wasmer_runtime::{instantiate, Func};
 
 /// Host functions for WASI.
 #[derive(Debug)]
-pub struct WasiHost {
-    arguments: Vec<String>,
-    environment: Vec<String>,
+pub struct WasiHost<S: StringRepresentation> {
+    arguments: Vec<S::Owned>,
+    environment: Vec<S::Owned>,
+    _phantom: PhantomData<fn(S) -> S>,
 }
 
-impl WasiHost {
+impl<S: StringRepresentation> WasiHost<S> {
     /// Creates a new WASI host.
     pub fn new(
-        arguments: impl IntoIterator<Item = impl Into<String>>,
-        environment: impl IntoIterator<Item = impl Into<String>>,
-    ) -> Arc<WasiHost> {
+        arguments: impl IntoIterator<Item = impl Into<S::Owned>>,
+        environment: impl IntoIterator<Item = impl Into<S::Owned>>,
+    ) -> Arc<Self> {
         let arguments = arguments.into_iter().map(|s| s.into()).collect();
         let environment = environment.into_iter().map(|s| s.into()).collect();
 
         Arc::new(WasiHost {
             arguments,
             environment,
+            _phantom: PhantomData,
         })
     }
 
@@ -72,12 +74,14 @@ impl WasiHost {
     }
 }
 
-impl WasiImports for WasiHost {
-    fn args_get(&self) -> WasiResult<&[String]> {
+impl<S: StringRepresentation> WasiImports for WasiHost<S> {
+    type StringRepresentation = S;
+
+    fn args_get(&self) -> WasiResult<&[S::Owned]> {
         Ok(&self.arguments[..])
     }
 
-    fn environ_get(&self) -> WasiResult<&[String]> {
+    fn environ_get(&self) -> WasiResult<&[S::Owned]> {
         Ok(&self.environment[..])
     }
 
@@ -143,7 +147,7 @@ impl WasiImports for WasiHost {
         Err(Errno::Badf)
     }
 
-    fn fd_prestat_dir_name(&self, _: Fd) -> WasiResult<String> {
+    fn fd_prestat_dir_name(&self, _: Fd) -> WasiResult<S::Owned> {
         unimplemented!("fd_prestat_dir_name")
     }
 
@@ -155,7 +159,7 @@ impl WasiImports for WasiHost {
         unimplemented!("fd_read")
     }
 
-    fn fd_readdir(&self, _: Fd, _: Dircookie) -> WasiResult<Option<(Dirent, String)>> {
+    fn fd_readdir(&self, _: Fd, _: Dircookie) -> WasiResult<Option<(Dirent, S::Owned)>> {
         unimplemented!("fd_readdir")
     }
 
@@ -183,11 +187,16 @@ impl WasiImports for WasiHost {
         }
     }
 
-    fn path_create_directory(&self, _fd: Fd, _path: &str) -> WasiResult<()> {
+    fn path_create_directory(&self, _fd: Fd, _path: &S::Borrowed) -> WasiResult<()> {
         todo!("path_create_directory")
     }
 
-    fn path_filestat_get(&self, _fd: Fd, _flags: Lookupflags, _path: &str) -> WasiResult<Filestat> {
+    fn path_filestat_get(
+        &self,
+        _fd: Fd,
+        _flags: Lookupflags,
+        _path: &S::Borrowed,
+    ) -> WasiResult<Filestat> {
         todo!("path_filestat_get")
     }
 
@@ -195,7 +204,7 @@ impl WasiImports for WasiHost {
         &self,
         _fd: Fd,
         _flags: Lookupflags,
-        _path: &str,
+        _path: &S::Borrowed,
         _atim: Timestamp,
         _mtim: Timestamp,
         _fst_flags: Fstflags,
@@ -207,7 +216,7 @@ impl WasiImports for WasiHost {
         &self,
         _fd: Fd,
         _dirflags: Lookupflags,
-        _path: &str,
+        _path: &S::Borrowed,
         _oflags: Oflags,
         _fs_rights_base: Rights,
         _fs_rights_inheriting: Rights,
@@ -220,36 +229,41 @@ impl WasiImports for WasiHost {
         &self,
         _old_fd: Fd,
         _old_flags: Lookupflags,
-        _old_path: &str,
+        _old_path: &S::Borrowed,
         _new_fd: Fd,
-        _new_path: &str,
+        _new_path: &S::Borrowed,
     ) -> WasiResult<()> {
         todo!("path_link")
     }
 
-    fn path_readlink(&self, _fd: Fd, _path: &str) -> WasiResult<String> {
+    fn path_readlink(&self, _fd: Fd, _path: &S::Borrowed) -> WasiResult<S::Owned> {
         todo!("path_readlink")
     }
 
-    fn path_remove_directory(&self, _fd: Fd, _path: &str) -> WasiResult<()> {
+    fn path_remove_directory(&self, _fd: Fd, _path: &S::Borrowed) -> WasiResult<()> {
         todo!("path_remove_directory")
     }
 
     fn path_rename(
         &self,
         _fd: Fd,
-        _old_path: &str,
+        _old_path: &S::Borrowed,
         _new_fd: Fd,
-        _new_path: &str,
+        _new_path: &S::Borrowed,
     ) -> WasiResult<()> {
         todo!("path_rename")
     }
 
-    fn path_symlink(&self, _old_path: &str, _fd: Fd, _new_path: &str) -> WasiResult<()> {
+    fn path_symlink(
+        &self,
+        _old_path: &S::Borrowed,
+        _fd: Fd,
+        _new_path: &S::Borrowed,
+    ) -> WasiResult<()> {
         todo!("path_symlink")
     }
 
-    fn path_unlink_file(&self, _fd: Fd, _path: &str) -> WasiResult<()> {
+    fn path_unlink_file(&self, _fd: Fd, _path: &S::Borrowed) -> WasiResult<()> {
         todo!("path_unlink_file")
     }
 
