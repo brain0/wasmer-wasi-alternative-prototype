@@ -235,17 +235,19 @@ impl<S: StringRepresentation> WasiImports for WasiHost<S> {
     }
 
     fn fd_renumber(&self, fd: Fd, to: Fd) -> WasiResult<()> {
-        let old_to = {
-            let mut fds = self.fds.lock();
+        if fd != to {
+            let old_to = {
+                let mut fds = self.fds.lock();
 
-            let fd = fds.get(&fd).map(|fd| fd.clone()).ok_or(Errno::Badf)?;
-            let to = fds.get_mut(&to).ok_or(Errno::Badf)?;
+                let fd = fds.get(&fd).map(|fd| fd.clone()).ok_or(Errno::Badf)?;
+                let to = fds.get_mut(&to).ok_or(Errno::Badf)?;
 
-            mem::replace(to, fd)
-        };
+                mem::replace(to, fd)
+            };
 
-        // Always drop the fd outside of the lock.
-        drop(old_to);
+            // Always drop the fd outside of the lock.
+            drop(old_to);
+        }
 
         Ok(())
     }
