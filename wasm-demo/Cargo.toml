@@ -10,3 +10,4 @@ edition = "2018"
 wasmer-runtime-core = "0.14.1"
 wasmer-runtime = "0.14.1"
 wasmer-wasi-alternative-prototype = { path = "../wasmer-wasi-alternative-prototype" }
+getrandom = "0.1"

@@ -1,12 +1,11 @@
-#![allow(unused_variables)]
 #![allow(missing_docs)]
 
-//! Implementation of types and interfaces for WASI snashot 1.
+//! Implementation of types and interfaces for WASI snapshot 1.
 //!
 //! This module is incomplete and lacks documentation.
 
 use self::native::{NativeWasiImports, NativeWasiImportsExt};
-use std::{cell::Cell, sync::Arc};
+use std::{cell::Cell, cmp::min, sync::Arc};
 use witx_gen::{
     reexports::{Ctx, ImportObject, Memory},
     witx_gen, WasiValue, WasmSlicePtr, WasmValue,
@@ -54,9 +53,52 @@ pub trait WasiImports: Send + Sync + 'static {
     fn fd_sync(&self, fd: Fd) -> WasiResult<()>;
     fn fd_tell(&self, fd: Fd) -> WasiResult<Filesize>;
     fn fd_write(&self, fd: Fd, bufs: &[&[u8]]) -> WasiResult<Size>;
+    fn path_create_directory(&self, fd: Fd, path: &str) -> WasiResult<()>;
+    fn path_filestat_get(&self, fd: Fd, flags: Lookupflags, path: &str) -> WasiResult<Filestat>;
+    fn path_filestat_set_times(
+        &self,
+        fd: Fd,
+        flags: Lookupflags,
+        path: &str,
+        atim: Timestamp,
+        mtim: Timestamp,
+        fst_flags: Fstflags,
+    ) -> WasiResult<()>;
+    fn path_open(
+        &self,
+        fd: Fd,
+        dirflags: Lookupflags,
+        path: &str,
+        oflags: Oflags,
+        fs_rights_base: Rights,
+        fs_rights_inheriting: Rights,
+        fdflags: Fdflags,
+    ) -> WasiResult<Fd>;
+    fn path_link(
+        &self,
+        old_fd: Fd,
+        old_flags: Lookupflags,
+        old_path: &str,
+        new_fd: Fd,
+        new_path: &str,
+    ) -> WasiResult<()>;
+    fn path_readlink(&self, fd: Fd, path: &str) -> WasiResult<String>;
+    fn path_remove_directory(&self, fd: Fd, path: &str) -> WasiResult<()>;
+    fn path_rename(&self, fd: Fd, old_path: &str, new_fd: Fd, new_path: &str) -> WasiResult<()>;
+    fn path_symlink(&self, old_path: &str, fd: Fd, new_path: &str) -> WasiResult<()>;
+    fn path_unlink_file(&self, fd: Fd, path: &str) -> WasiResult<()>;
+    fn poll_oneoff(&self, subscriptions: &[Subscription]) -> WasiResult<Vec<Event>>;
     fn proc_exit(&self, rval: Exitcode) -> Result<std::convert::Infallible, Exitcode>;
     fn proc_raise(&self, sig: Signal) -> WasiResult<()>;
+    fn random_get(&self, buf: &mut [u8]) -> WasiResult<()>;
     fn sched_yield(&self) -> WasiResult<()>;
+    fn sock_recv(
+        &self,
+        fd: Fd,
+        ri_data: &[&mut [u8]],
+        ri_flags: Riflags,
+    ) -> WasiResult<(Size, Roflags)>;
+    fn sock_send(&self, fd: Fd, si_data: &[&[u8]], si_flags: Siflags) -> WasiResult<Size>;
     fn sock_shutdown(&self, fd: Fd, how: Sdflags) -> WasiResult<()>;
 }
 
@@ -153,6 +195,15 @@ impl<T> NativeWasiAdapter<T> {
         let wasm_buf = wasm_buf.with(memory, wasm_buf_len);
 
         (0..wasm_buf_len).map(|i| wasm_buf.read(i)).collect()
+    }
+
+    fn read_string_from_buf(
+        memory: &Memory,
+        wasm_buf: WasmSlicePtr<u8>,
+        wasm_buf_len: native::size,
+    ) -> WasiResult<String> {
+        let buf = Self::read_from_buf(memory, wasm_buf, wasm_buf_len);
+        String::from_utf8(buf).map_err(|_| Errno::Inval)
     }
 
     fn write_to_bufs<F: FnOnce(&[&mut [u8]]) -> R, S: FnOnce(&R) -> native::size, R>(
@@ -260,6 +311,24 @@ macro_rules! to_result1 {
         match $e {
             Ok(val) => (native::errno_success, val.to_native()),
             Err(err) => (err.to_native(), Default::default()),
+        }
+    };
+}
+
+macro_rules! try2 {
+    ($e:expr) => {
+        match $e {
+            Ok(val) => val,
+            Err(_) => return (native::errno_inval, Default::default(), Default::default()),
+        }
+    };
+}
+
+macro_rules! to_result2 {
+    ($e:expr) => {
+        match $e {
+            Ok((val1, val2)) => (native::errno_success, val1.to_native(), val2.to_native()),
+            Err(err) => (err.to_native(), Default::default(), Default::default()),
         }
     };
 }
@@ -620,7 +689,10 @@ impl<T: WasiImports> NativeWasiImports for NativeWasiAdapter<T> {
         path: WasmSlicePtr<u8>,
         path_len: native::size,
     ) -> native::errno {
-        todo!("path_create_directory")
+        let fd = try0!(Fd::from_native(fd));
+        let path = try0!(Self::read_string_from_buf(ctx.memory(0), path, path_len));
+
+        to_result0!(self.0.path_create_directory(fd, &path))
     }
 
     fn path_filestat_get(
@@ -631,7 +703,11 @@ impl<T: WasiImports> NativeWasiImports for NativeWasiAdapter<T> {
         path: WasmSlicePtr<u8>,
         path_len: native::size,
     ) -> (native::errno, native::filestat) {
-        todo!("path_filestat_get")
+        let fd = try1!(Fd::from_native(fd));
+        let flags = try1!(Lookupflags::from_native(flags));
+        let path = try1!(Self::read_string_from_buf(ctx.memory(0), path, path_len));
+
+        to_result1!(self.0.path_filestat_get(fd, flags, &path))
     }
 
     fn path_filestat_set_times(
@@ -645,7 +721,16 @@ impl<T: WasiImports> NativeWasiImports for NativeWasiAdapter<T> {
         mtim: native::timestamp,
         fst_flags: native::fstflags,
     ) -> native::errno {
-        todo!("path_filestat_set_times")
+        let fd = try0!(Fd::from_native(fd));
+        let flags = try0!(Lookupflags::from_native(flags));
+        let path = try0!(Self::read_string_from_buf(ctx.memory(0), path, path_len));
+        let atim = try0!(Timestamp::from_native(atim));
+        let mtim = try0!(Timestamp::from_native(mtim));
+        let fst_flags = try0!(Fstflags::from_native(fst_flags));
+
+        to_result0!(self
+            .0
+            .path_filestat_set_times(fd, flags, &path, atim, mtim, fst_flags))
     }
 
     fn path_link(
@@ -659,7 +744,17 @@ impl<T: WasiImports> NativeWasiImports for NativeWasiAdapter<T> {
         new_path: WasmSlicePtr<u8>,
         new_path_len: native::size,
     ) -> native::errno {
-        todo!("path_link")
+        let memory = ctx.memory(0);
+
+        let old_fd = try0!(Fd::from_native(old_fd));
+        let old_flags = try0!(Lookupflags::from_native(old_flags));
+        let old_path = try0!(Self::read_string_from_buf(memory, old_path, old_path_len));
+        let new_fd = try0!(Fd::from_native(new_fd));
+        let new_path = try0!(Self::read_string_from_buf(memory, new_path, new_path_len));
+
+        to_result0!(self
+            .0
+            .path_link(old_fd, old_flags, &old_path, new_fd, &new_path))
     }
 
     fn path_open(
@@ -671,10 +766,26 @@ impl<T: WasiImports> NativeWasiImports for NativeWasiAdapter<T> {
         path_len: native::size,
         oflags: native::oflags,
         fs_rights_base: native::rights,
-        fs_rights_inherting: native::rights,
+        fs_rights_inheriting: native::rights,
         fdflags: native::fdflags,
     ) -> (native::errno, native::fd) {
-        todo!("path_open")
+        let fd = try1!(Fd::from_native(fd));
+        let dirflags = try1!(Lookupflags::from_native(dirflags));
+        let path = try1!(Self::read_string_from_buf(ctx.memory(0), path, path_len));
+        let oflags = try1!(Oflags::from_native(oflags));
+        let fs_rights_base = try1!(Rights::from_native(fs_rights_base));
+        let fs_rights_inheriting = try1!(Rights::from_native(fs_rights_inheriting));
+        let fdflags = try1!(Fdflags::from_native(fdflags));
+
+        to_result1!(self.0.path_open(
+            fd,
+            dirflags,
+            &path,
+            oflags,
+            fs_rights_base,
+            fs_rights_inheriting,
+            fdflags
+        ))
     }
 
     fn path_readlink(
@@ -686,7 +797,29 @@ impl<T: WasiImports> NativeWasiImports for NativeWasiAdapter<T> {
         buf: WasmSlicePtr<u8>,
         buf_len: native::size,
     ) -> (native::errno, native::size) {
-        todo!("path_readlink")
+        let memory = ctx.memory(0);
+
+        let fd = try1!(Fd::from_native(fd));
+        let path = try1!(Self::read_string_from_buf(memory, path, path_len));
+
+        let result = match self.0.path_readlink(fd, &path) {
+            Ok(result) => result,
+            Err(err) => return (err.to_native(), Default::default()),
+        };
+
+        Self::write_to_buf(
+            memory,
+            buf,
+            buf_len,
+            |buf| {
+                let result = result.as_bytes();
+                let len = min(buf.len(), result.len());
+
+                buf[..len].copy_from_slice(&result[..len]);
+                (native::errno_success, len as u32)
+            },
+            |r| r.1,
+        )
     }
 
     fn path_remove_directory(
@@ -696,7 +829,10 @@ impl<T: WasiImports> NativeWasiImports for NativeWasiAdapter<T> {
         path: WasmSlicePtr<u8>,
         path_len: native::size,
     ) -> native::errno {
-        todo!("path_remove_directory")
+        let fd = try0!(Fd::from_native(fd));
+        let path = try0!(Self::read_string_from_buf(ctx.memory(0), path, path_len));
+
+        to_result0!(self.0.path_remove_directory(fd, &path))
     }
 
     fn path_rename(
@@ -709,7 +845,14 @@ impl<T: WasiImports> NativeWasiImports for NativeWasiAdapter<T> {
         new_path: WasmSlicePtr<u8>,
         new_path_len: native::size,
     ) -> native::errno {
-        todo!("path_rename")
+        let memory = ctx.memory(0);
+
+        let fd = try0!(Fd::from_native(fd));
+        let old_path = try0!(Self::read_string_from_buf(memory, old_path, old_path_len));
+        let new_fd = try0!(Fd::from_native(new_fd));
+        let new_path = try0!(Self::read_string_from_buf(memory, new_path, new_path_len));
+
+        to_result0!(self.0.path_rename(fd, &old_path, new_fd, &new_path))
     }
 
     fn path_symlink(
@@ -721,7 +864,13 @@ impl<T: WasiImports> NativeWasiImports for NativeWasiAdapter<T> {
         new_path: WasmSlicePtr<u8>,
         new_path_len: native::size,
     ) -> native::errno {
-        todo!("path_symlink")
+        let memory = ctx.memory(0);
+
+        let old_path = try0!(Self::read_string_from_buf(memory, old_path, old_path_len));
+        let fd = try0!(Fd::from_native(fd));
+        let new_path = try0!(Self::read_string_from_buf(memory, new_path, new_path_len));
+
+        to_result0!(self.0.path_symlink(&old_path, fd, &new_path))
     }
 
     fn path_unlink_file(
@@ -731,7 +880,10 @@ impl<T: WasiImports> NativeWasiImports for NativeWasiAdapter<T> {
         path: WasmSlicePtr<u8>,
         path_len: native::size,
     ) -> native::errno {
-        todo!("path_unlink_file")
+        let fd = try0!(Fd::from_native(fd));
+        let path = try0!(Self::read_string_from_buf(ctx.memory(0), path, path_len));
+
+        to_result0!(self.0.path_unlink_file(fd, &path))
     }
 
     fn poll_oneoff(
@@ -741,7 +893,28 @@ impl<T: WasiImports> NativeWasiImports for NativeWasiAdapter<T> {
         out: WasmSlicePtr<native::event>,
         nsubscriptions: native::size,
     ) -> (native::errno, native::size) {
-        todo!("poll_oneoff")
+        let memory = ctx.memory(0);
+        let subscriptions = r#in.with(memory, nsubscriptions);
+        let subscriptions: Vec<_> = match (0..nsubscriptions)
+            .map(|i| Subscription::from_native(subscriptions.read(i)))
+            .collect()
+        {
+            Ok(s) => s,
+            Err(_) => return (native::errno_inval, Default::default()),
+        };
+
+        let mut results = match self.0.poll_oneoff(&subscriptions[..]) {
+            Ok(results) => results,
+            Err(err) => return (err.to_native(), Default::default()),
+        };
+        results.truncate(nsubscriptions as usize);
+
+        let out = out.with(memory, nsubscriptions);
+        for (i, result) in results.iter().enumerate() {
+            out.write(i as u32, result.to_native());
+        }
+
+        (native::errno_success, results.len() as u32)
     }
 
     fn proc_exit(
@@ -770,7 +943,13 @@ impl<T: WasiImports> NativeWasiImports for NativeWasiAdapter<T> {
         buf: WasmSlicePtr<u8>,
         buf_len: native::size,
     ) -> native::errno {
-        todo!("random_get")
+        Self::write_to_buf(
+            ctx.memory(0),
+            buf,
+            buf_len,
+            |buf| to_result0!(self.0.random_get(buf)),
+            |_| buf_len,
+        )
     }
 
     fn sock_recv(
@@ -781,7 +960,16 @@ impl<T: WasiImports> NativeWasiImports for NativeWasiAdapter<T> {
         ri_data_len: native::size,
         ri_flags: native::riflags,
     ) -> (native::errno, native::size, native::roflags) {
-        todo!("sock_recv")
+        let fd = try2!(Fd::from_native(fd));
+        let ri_flags = try2!(Riflags::from_native(ri_flags));
+
+        Self::write_to_bufs(
+            ctx.memory(0),
+            ri_data,
+            ri_data_len,
+            |buf| to_result2!(self.0.sock_recv(fd, buf, ri_flags)),
+            |&(e, s, _)| if e == native::errno_success { s } else { 0 },
+        )
     }
 
     fn sock_send(
@@ -792,7 +980,13 @@ impl<T: WasiImports> NativeWasiImports for NativeWasiAdapter<T> {
         si_data_len: native::size,
         si_flags: native::siflags,
     ) -> (native::errno, native::size) {
-        todo!("sock_send")
+        let fd = try1!(Fd::from_native(fd));
+        let si_flags = try1!(Siflags::from_native(si_flags));
+        let si_data = Self::read_from_bufs(ctx.memory(0), si_data, si_data_len);
+
+        let slices: Vec<_> = si_data.iter().map(|v| &v[..]).collect();
+
+        to_result1!(self.0.sock_send(fd, &slices[..], si_flags))
     }
 
     fn sock_shutdown(&self, _ctx: &mut Ctx, fd: native::fd, how: native::sdflags) -> native::errno {

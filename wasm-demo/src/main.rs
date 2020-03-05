@@ -9,6 +9,7 @@
     unused_qualifications,
     variant_size_differences
 )]
+#![allow(unused_variables)]
 
 use std::{env, fs::File, io::Read, string::String};
 use wasmer_runtime::{instantiate, Func};
@@ -141,6 +142,74 @@ impl WasiImports for Wasi {
         }
     }
 
+    fn path_create_directory(&self, fd: Fd, path: &str) -> WasiResult<()> {
+        todo!("path_create_directory")
+    }
+
+    fn path_filestat_get(&self, fd: Fd, flags: Lookupflags, path: &str) -> WasiResult<Filestat> {
+        todo!("path_filestat_get")
+    }
+
+    fn path_filestat_set_times(
+        &self,
+        fd: Fd,
+        flags: Lookupflags,
+        path: &str,
+        atim: Timestamp,
+        mtim: Timestamp,
+        fst_flags: Fstflags,
+    ) -> WasiResult<()> {
+        todo!("path_filestat_set_times")
+    }
+
+    fn path_open(
+        &self,
+        fd: Fd,
+        dirflags: Lookupflags,
+        path: &str,
+        oflags: Oflags,
+        fs_rights_base: Rights,
+        fs_rights_inheriting: Rights,
+        fdflags: Fdflags,
+    ) -> WasiResult<Fd> {
+        todo!("path_open")
+    }
+
+    fn path_link(
+        &self,
+        old_fd: Fd,
+        old_flags: Lookupflags,
+        old_path: &str,
+        new_fd: Fd,
+        new_path: &str,
+    ) -> WasiResult<()> {
+        todo!("path_link")
+    }
+
+    fn path_readlink(&self, fd: Fd, path: &str) -> WasiResult<String> {
+        todo!("path_readlink")
+    }
+
+    fn path_remove_directory(&self, fd: Fd, path: &str) -> WasiResult<()> {
+        todo!("path_remove_directory")
+    }
+
+    fn path_rename(&self, fd: Fd, old_path: &str, new_fd: Fd, new_path: &str) -> WasiResult<()> {
+        todo!("path_rename")
+    }
+
+    fn path_symlink(&self, old_path: &str, fd: Fd, new_path: &str) -> WasiResult<()> {
+        todo!("path_symlink")
+    }
+
+    fn path_unlink_file(&self, fd: Fd, path: &str) -> WasiResult<()> {
+        todo!("path_unlink_file")
+    }
+
+    fn poll_oneoff(&self, subscriptions: &[Subscription]) -> WasiResult<Vec<Event>> {
+        todo!("poll_oneoff")
+    }
+
     fn proc_exit(&self, c: Exitcode) -> Result<std::convert::Infallible, Exitcode> {
         Err(c)
     }
@@ -149,12 +218,29 @@ impl WasiImports for Wasi {
         unimplemented!("proc_raise")
     }
 
+    fn random_get(&self, buf: &mut [u8]) -> WasiResult<()> {
+        getrandom::getrandom(buf).map_err(|_| Errno::Io)
+    }
+
     fn sched_yield(&self) -> WasiResult<()> {
         unimplemented!("sched_yield")
     }
 
+    fn sock_recv(
+        &self,
+        fd: Fd,
+        ri_data: &[&mut [u8]],
+        ri_flags: Riflags,
+    ) -> WasiResult<(Size, Roflags)> {
+        todo!("sock_recv")
+    }
+
+    fn sock_send(&self, fd: Fd, si_data: &[&[u8]], si_flags: Siflags) -> WasiResult<Size> {
+        todo!("sock_send")
+    }
+
     fn sock_shutdown(&self, _: Fd, _: Sdflags) -> WasiResult<()> {
-        unimplemented!("sock_shutdown")
+        todo!("sock_shutdown")
     }
 }
 
