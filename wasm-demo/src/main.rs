@@ -13,7 +13,7 @@
 
 use std::{env, fs::File, io::Read, string::String};
 use wasmer_runtime::{instantiate, Func};
-use wasmer_wasi_alternative_prototype::wasi_snapshot_preview1::*;
+use wasihost_core::wasi_snapshot_preview1::*;
 
 struct Wasi {
     arguments: Vec<String>,

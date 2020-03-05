@@ -9,5 +9,5 @@ edition = "2018"
 [dependencies]
 wasmer-runtime-core = "0.14.1"
 wasmer-runtime = "0.14.1"
-wasmer-wasi-alternative-prototype = { path = "../wasmer-wasi-alternative-prototype" }
+wasihost-core = { path = "../wasihost-core" }
 getrandom = "0.1"

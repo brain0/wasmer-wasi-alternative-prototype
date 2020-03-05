@@ -2,6 +2,6 @@
 members = [
     "witx-gen",
     "witx-gen-macros",
-    "wasmer-wasi-alternative-prototype",
+    "wasihost-core",
     "wasm-demo",
 ]
