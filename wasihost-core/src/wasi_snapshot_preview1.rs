@@ -1,6 +1,4 @@
-//! Implementation of types and interfaces for WASI snapshot 1.
-//!
-//! This module is incomplete and lacks documentation.
+//! Implementation of types and interfaces for WASI snapshot preview 1.
 
 use self::native::{NativeWasiImports, NativeWasiImportsExt};
 use std::{cell::Cell, cmp::min, sync::Arc};

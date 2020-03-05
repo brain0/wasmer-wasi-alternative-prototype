@@ -3,5 +3,6 @@ members = [
     "witx-gen",
     "witx-gen-macros",
     "wasihost-core",
-    "wasm-demo",
+    "wasihost",
+    "wasihost-demo",
 ]

@@ -1,26 +1,67 @@
-#![forbid(rust_2018_idioms, future_incompatible, elided_lifetimes_in_paths)]
-#![warn(
-    missing_debug_implementations,
-    trivial_casts,
-    trivial_numeric_casts,
-    unreachable_pub,
-    unused_extern_crates,
-    unused_import_braces,
-    unused_qualifications,
-    variant_size_differences
-)]
-#![allow(unused_variables)]
+//! High-level abstraction for executing binaries conforming to WASI snapshot preview 1.
 
-use std::{env, fs::File, io::Read, string::String};
+use std::{error::Error, fs::File, io::Read, path::Path, sync::Arc};
 use wasihost_core::wasi_snapshot_preview1::*;
 use wasmer_runtime::{instantiate, Func};
 
-struct Wasi {
+/// Host functions for WASI.
+#[derive(Debug)]
+pub struct WasiHost {
     arguments: Vec<String>,
     environment: Vec<String>,
 }
 
-impl Wasi {
+impl WasiHost {
+    /// Creates a new WASI host.
+    pub fn new(
+        arguments: impl IntoIterator<Item = impl Into<String>>,
+        environment: impl IntoIterator<Item = impl Into<String>>,
+    ) -> Arc<WasiHost> {
+        let arguments = arguments.into_iter().map(|s| s.into()).collect();
+        let environment = environment.into_iter().map(|s| s.into()).collect();
+
+        Arc::new(WasiHost {
+            arguments,
+            environment,
+        })
+    }
+
+    /// Runs a WASM file on this WASI host.
+    pub fn run_file(
+        self: Arc<Self>,
+        wasm_file: impl AsRef<Path>,
+    ) -> Result<native::exitcode, Box<dyn Error>> {
+        let mut wasm_binary = Vec::new();
+
+        {
+            let mut file = File::open(&wasm_file)?;
+            file.read_to_end(&mut wasm_binary)?;
+        }
+
+        self.run_binary(&wasm_binary[..])
+    }
+
+    /// Runs a WASM binary from memory on this WASI host.
+    pub fn run_binary(
+        self: Arc<Self>,
+        wasm_binary: &[u8],
+    ) -> Result<native::exitcode, Box<dyn Error>> {
+        let instance = {
+            let import_object = self.into_imports();
+            instantiate(&wasm_binary, &import_object)?
+        };
+
+        let start: Func<'_, ()> = instance.func("_start")?;
+
+        Ok(match start.call() {
+            Ok(()) => 0,
+            Err(e) => match e.0.downcast_ref::<native::exitcode>() {
+                Some(&code) => code,
+                None => Err(e)?,
+            },
+        })
+    }
+
     fn write_bufs<W: std::io::Write>(mut writer: W, bufs: &[&[u8]]) -> WasiResult<Size> {
         for buf in bufs {
             writer.write_all(buf).map_err(|_| Errno::Inval)?;
@@ -31,7 +72,7 @@ impl Wasi {
     }
 }
 
-impl WasiImports for Wasi {
+impl WasiImports for WasiHost {
     fn args_get(&self) -> WasiResult<&[String]> {
         Ok(&self.arguments[..])
     }
@@ -142,71 +183,77 @@ impl WasiImports for Wasi {
         }
     }
 
-    fn path_create_directory(&self, fd: Fd, path: &str) -> WasiResult<()> {
+    fn path_create_directory(&self, _fd: Fd, _path: &str) -> WasiResult<()> {
         todo!("path_create_directory")
     }
 
-    fn path_filestat_get(&self, fd: Fd, flags: Lookupflags, path: &str) -> WasiResult<Filestat> {
+    fn path_filestat_get(&self, _fd: Fd, _flags: Lookupflags, _path: &str) -> WasiResult<Filestat> {
         todo!("path_filestat_get")
     }
 
     fn path_filestat_set_times(
         &self,
-        fd: Fd,
-        flags: Lookupflags,
-        path: &str,
-        atim: Timestamp,
-        mtim: Timestamp,
-        fst_flags: Fstflags,
+        _fd: Fd,
+        _flags: Lookupflags,
+        _path: &str,
+        _atim: Timestamp,
+        _mtim: Timestamp,
+        _fst_flags: Fstflags,
     ) -> WasiResult<()> {
         todo!("path_filestat_set_times")
     }
 
     fn path_open(
         &self,
-        fd: Fd,
-        dirflags: Lookupflags,
-        path: &str,
-        oflags: Oflags,
-        fs_rights_base: Rights,
-        fs_rights_inheriting: Rights,
-        fdflags: Fdflags,
+        _fd: Fd,
+        _dirflags: Lookupflags,
+        _path: &str,
+        _oflags: Oflags,
+        _fs_rights_base: Rights,
+        _fs_rights_inheriting: Rights,
+        _fdflags: Fdflags,
     ) -> WasiResult<Fd> {
         todo!("path_open")
     }
 
     fn path_link(
         &self,
-        old_fd: Fd,
-        old_flags: Lookupflags,
-        old_path: &str,
-        new_fd: Fd,
-        new_path: &str,
+        _old_fd: Fd,
+        _old_flags: Lookupflags,
+        _old_path: &str,
+        _new_fd: Fd,
+        _new_path: &str,
     ) -> WasiResult<()> {
         todo!("path_link")
     }
 
-    fn path_readlink(&self, fd: Fd, path: &str) -> WasiResult<String> {
+    fn path_readlink(&self, _fd: Fd, _path: &str) -> WasiResult<String> {
         todo!("path_readlink")
     }
 
-    fn path_remove_directory(&self, fd: Fd, path: &str) -> WasiResult<()> {
+    fn path_remove_directory(&self, _fd: Fd, _path: &str) -> WasiResult<()> {
         todo!("path_remove_directory")
     }
 
-    fn path_rename(&self, fd: Fd, old_path: &str, new_fd: Fd, new_path: &str) -> WasiResult<()> {
+    fn path_rename(
+        &self,
+        _fd: Fd,
+        _old_path: &str,
+        _new_fd: Fd,
+        _new_path: &str,
+    ) -> WasiResult<()> {
         todo!("path_rename")
     }
 
-    fn path_symlink(&self, old_path: &str, fd: Fd, new_path: &str) -> WasiResult<()> {
+    fn path_symlink(&self, _old_path: &str, _fd: Fd, _new_path: &str) -> WasiResult<()> {
         todo!("path_symlink")
     }
 
-    fn path_unlink_file(&self, fd: Fd, path: &str) -> WasiResult<()> {
+    fn path_unlink_file(&self, _fd: Fd, _path: &str) -> WasiResult<()> {
         todo!("path_unlink_file")
     }
 
-    fn poll_oneoff(&self, subscriptions: &[Subscription]) -> WasiResult<Vec<Event>> {
+    fn poll_oneoff(&self, _subscriptions: &[Subscription]) -> WasiResult<Vec<Event>> {
         todo!("poll_oneoff")
     }
 
@@ -228,64 +275,18 @@ impl WasiImports for Wasi {
 
     fn sock_recv(
         &self,
-        fd: Fd,
-        ri_data: &[&mut [u8]],
-        ri_flags: Riflags,
+        _fd: Fd,
+        _ri_data: &[&mut [u8]],
+        _ri_flags: Riflags,
     ) -> WasiResult<(Size, Roflags)> {
         todo!("sock_recv")
     }
 
-    fn sock_send(&self, fd: Fd, si_data: &[&[u8]], si_flags: Siflags) -> WasiResult<Size> {
+    fn sock_send(&self, _fd: Fd, _si_data: &[&[u8]], _si_flags: Siflags) -> WasiResult<Size> {
         todo!("sock_send")
     }
 
     fn sock_shutdown(&self, _: Fd, _: Sdflags) -> WasiResult<()> {
         todo!("sock_shutdown")
     }
-}
-
-fn main() {
-    let wasm_filename = env::args().skip(1).next().unwrap();
-
-    let arguments = env::args().skip(2).collect();
-    let environment = env::vars()
-        .map(|(key, value)| format!("{}={}", key, value))
-        .collect();
-
-    let wasi = Wasi {
-        arguments,
-        environment,
-    };
-
-    eprintln!("Compiling WASI ...");
-
-    let instance = {
-        let mut wasm = Vec::new();
-
-        {
-            let mut file = File::open(&wasm_filename).expect("Failed to open file");
-            file.read_to_end(&mut wasm).expect("Failed to read file");
-        }
-
-        let import_object = wasi.into_imports();
-        instantiate(&wasm[..], &import_object).expect("Failed to instantiate")
-    };
-
-    eprintln!("Looking for entry point ...");
-
-    let start: Func<'_, ()> = instance
-        .func("_start")
-        .expect("Unable to find _start function");
-
-    eprintln!("Running WASI binary ...");
-
-    let code = match start.call() {
-        Ok(()) => 0,
-        Err(e) => match e.0.downcast_ref::<native::exitcode>() {
-            Some(&code) => code,
-            None => panic!("Failed to get exit code."),
-        },
-    };
-
-    eprintln!("WASI program exited with exit code {}.", code);
 }
