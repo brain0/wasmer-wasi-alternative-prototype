@@ -2,7 +2,12 @@
 
 use self::native::{NativeWasiImports, NativeWasiImportsExt};
 use super::string_representation::StringRepresentation;
-use std::{cell::Cell, cmp::min, sync::Arc};
+use std::{
+    cell::Cell,
+    cmp::min,
+    io::{IoSlice, IoSliceMut},
+    sync::Arc,
+};
 use witx_gen::{
     reexports::{Ctx, ImportObject, Memory},
     witx_gen, WasiValue, WasmSlicePtr, WasmValue,
@@ -12,6 +17,34 @@ witx_gen!("wasi_snapshot_preview1" => "WASI/phases/snapshot/witx/wasi_snapshot_p
 
 /// Result type for WASI methods.
 pub type WasiResult<T> = Result<T, Errno>;
+
+impl From<std::io::Error> for Errno {
+    fn from(error: std::io::Error) -> Errno {
+        use std::io::ErrorKind::*;
+
+        match error.kind() {
+            NotFound => Errno::Noent,
+            PermissionDenied => Errno::Acces,
+            ConnectionRefused => Errno::Connrefused,
+            ConnectionReset => Errno::Connreset,
+            ConnectionAborted => Errno::Connaborted,
+            NotConnected => Errno::Notconn,
+            AddrInUse => Errno::Addrinuse,
+            AddrNotAvailable => Errno::Addrnotavail,
+            BrokenPipe => Errno::Pipe,
+            AlreadyExists => Errno::Exist,
+            WouldBlock => Errno::Again,
+            InvalidInput => Errno::Inval,
+            InvalidData => Errno::Badmsg,
+            TimedOut => Errno::Timedout,
+            WriteZero => Errno::Pipe,
+            Interrupted => Errno::Intr,
+            Other => Errno::Io,
+            UnexpectedEof => Errno::Io,
+            _ => Errno::Io,
+        }
+    }
+}
 
 /// Functions necessary to satisfy the WASI specification.
 pub trait WasiImports: Send + Sync + 'static {
@@ -102,7 +135,7 @@ pub trait WasiImports: Send + Sync + 'static {
     /// Read from a file descriptor, without using and updating the file descriptor's offset.
     ///
     /// Note: This is similar to `preadv` in POSIX.
-    fn fd_pread(&self, fd: Fd, iovs: &[&mut [u8]], offset: Filesize) -> WasiResult<Size>;
+    fn fd_pread(&self, fd: Fd, iovs: &mut [IoSliceMut<'_>], offset: Filesize) -> WasiResult<Size>;
 
     /// Return a description of the given preopened file descriptor.
     fn fd_prestat_get(&self, fd: Fd) -> WasiResult<Prestat>;
@@ -116,12 +149,12 @@ pub trait WasiImports: Send + Sync + 'static {
     /// Write to a file descriptor, without using and updating the file descriptor's offset.
     ///
     /// Note: This is similar to `pwritev` in POSIX.
-    fn fd_pwrite(&self, fd: Fd, bufs: &[&[u8]], offset: Filesize) -> WasiResult<Size>;
+    fn fd_pwrite(&self, fd: Fd, bufs: &[IoSlice<'_>], offset: Filesize) -> WasiResult<Size>;
 
     /// Read from a file descriptor.
     ///
     /// Note: This is similar to `readv` in POSIX.
-    fn fd_read(&self, fd: Fd, iovs: &[&mut [u8]]) -> WasiResult<Size>;
+    fn fd_read(&self, fd: Fd, iovs: &mut [IoSliceMut<'_>]) -> WasiResult<Size>;
 
     /// Read one directory entry from a directory.
     ///
@@ -162,7 +195,7 @@ pub trait WasiImports: Send + Sync + 'static {
     /// Write to a file descriptor.
     ///
     /// Note: This is similar to `writev` in POSIX.
-    fn fd_write(&self, fd: Fd, bufs: &[&[u8]]) -> WasiResult<Size>;
+    fn fd_write(&self, fd: Fd, bufs: &[IoSlice<'_>]) -> WasiResult<Size>;
 
     /// Create a directory.
     ///
@@ -305,7 +338,7 @@ pub trait WasiImports: Send + Sync + 'static {
     fn sock_recv(
         &self,
         fd: Fd,
-        ri_data: &[&mut [u8]],
+        ri_data: &mut [IoSliceMut<'_>],
         ri_flags: Riflags,
     ) -> WasiResult<(Size, Roflags)>;
 
@@ -313,7 +346,7 @@ pub trait WasiImports: Send + Sync + 'static {
     ///
     /// Note: This is similar to `send` in POSIX, though it also supports writing the data from multiple buffers
     /// in the manner of `writev`.
-    fn sock_send(&self, fd: Fd, si_data: &[&[u8]], si_flags: Siflags) -> WasiResult<Size>;
+    fn sock_send(&self, fd: Fd, si_data: &[IoSlice<'_>], si_flags: Siflags) -> WasiResult<Size>;
 
     /// Shut down socket send and receive channels.
     ///
@@ -438,7 +471,7 @@ impl<T: WasiImports> NativeWasiAdapter<T> {
         <T as WasiImports>::StringRepresentation::owned_from_bytes(buf).map_err(|_| Errno::Inval)
     }
 
-    fn write_to_bufs<F: FnOnce(&[&mut [u8]]) -> R, S: FnOnce(&R) -> native::size, R>(
+    fn write_to_bufs<F: FnOnce(&mut [IoSliceMut<'_>]) -> R, S: FnOnce(&R) -> native::size, R>(
         memory: &Memory,
         iovs: WasmSlicePtr<native::iovec>,
         iovs_len: native::size,
@@ -454,9 +487,12 @@ impl<T: WasiImports> NativeWasiAdapter<T> {
             .iter()
             .map(|s| vec![0u8; s.buf_len as usize])
             .collect();
-        let buf_slices: Vec<_> = bufs.iter_mut().map(|v| &mut v[..]).collect();
+        let mut buf_slices: Vec<_> = bufs
+            .iter_mut()
+            .map(|v| IoSliceMut::new(&mut v[..]))
+            .collect();
 
-        let result = f(&buf_slices[..]);
+        let result = f(&mut buf_slices[..]);
         let size = s(&result);
 
         if size > 0 {
@@ -794,7 +830,7 @@ impl<T: WasiImports> NativeWasiImports for NativeWasiAdapter<T> {
         let offset = try1!(Filesize::from_native(offset));
         let data = Self::read_from_bufs(ctx.memory(0), iovs, iovs_len);
 
-        let slices: Vec<_> = data.iter().map(|v| &v[..]).collect();
+        let slices: Vec<_> = data.iter().map(|v| IoSlice::new(&v[..])).collect();
 
         to_result1!(self.0.fd_pwrite(fd, &slices[..], offset))
     }
@@ -909,7 +945,7 @@ impl<T: WasiImports> NativeWasiImports for NativeWasiAdapter<T> {
         let fd = try1!(Fd::from_native(fd));
         let data = Self::read_from_bufs(ctx.memory(0), iovs, iovs_len);
 
-        let slices: Vec<_> = data.iter().map(|v| &v[..]).collect();
+        let slices: Vec<_> = data.iter().map(|v| IoSlice::new(&v[..])).collect();
 
         to_result1!(self.0.fd_write(fd, &slices[..]))
     }
@@ -1247,7 +1283,7 @@ impl<T: WasiImports> NativeWasiImports for NativeWasiAdapter<T> {
         let si_flags = try1!(Siflags::from_native(si_flags));
         let si_data = Self::read_from_bufs(ctx.memory(0), si_data, si_data_len);
 
-        let slices: Vec<_> = si_data.iter().map(|v| &v[..]).collect();
+        let slices: Vec<_> = si_data.iter().map(|v| IoSlice::new(&v[..])).collect();
 
         to_result1!(self.0.sock_send(fd, &slices[..], si_flags))
     }

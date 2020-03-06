@@ -11,7 +11,10 @@
 )]
 
 use std::env;
-use wasihost::{string_representation::Utf8, wasi_snapshot_preview1::WasiHost};
+use wasihost::{
+    string_representation::Utf8,
+    wasi_snapshot_preview1::{DefaultWasiFdInitializer, WasiHost},
+};
 
 fn main() {
     let wasm_filename = env::args().skip(1).next().unwrap();
@@ -19,7 +22,7 @@ fn main() {
     let arguments = env::args().skip(1);
     let environment = env::vars().map(|(key, value)| format!("{}={}", key, value));
 
-    let wasi_host = WasiHost::<Utf8>::new(arguments, environment);
+    let wasi_host = WasiHost::<Utf8>::new(arguments, environment, DefaultWasiFdInitializer);
 
     let code = wasi_host
         .run_file(&wasm_filename)

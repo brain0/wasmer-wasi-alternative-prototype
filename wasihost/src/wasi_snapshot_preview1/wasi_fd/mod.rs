@@ -1,5 +1,12 @@
+#![allow(unused_variables)] // Remove when everything is implemented.
+
+mod character_device;
+
 use super::atomic::{AtomicFdflags, AtomicRights};
-use std::marker::PhantomData;
+use std::{
+    io::{IoSlice, IoSliceMut},
+    marker::PhantomData,
+};
 use wasihost_core::{
     string_representation::StringRepresentation,
     wasi_snapshot_preview1::{
@@ -9,11 +16,17 @@ use wasihost_core::{
     },
 };
 
-#[derive(Debug)]
-enum WasiFdInner {}
+#[allow(unreachable_pub)] // false positive
+pub use character_device::{CharacterDevice, Stderr, Stdin, Stdout};
 
 #[derive(Debug)]
-pub(super) struct WasiFd<S> {
+enum WasiFdInner {
+    CharacterDevice(Box<dyn CharacterDevice>),
+}
+
+/// A WASI file descriptor.
+#[derive(Debug)]
+pub struct WasiFd<S> {
     inner: WasiFdInner,
     flags: AtomicFdflags,
     rights: AtomicRights,
@@ -22,6 +35,26 @@ pub(super) struct WasiFd<S> {
 }
 
 impl<S: StringRepresentation> WasiFd<S> {
+    /// Creates a WASI file descriptor from a character device.
+    pub fn from_character_device<C: CharacterDevice>(
+        character_device: C,
+        flags: Fdflags,
+        rights: Rights,
+    ) -> Self {
+        let inner = WasiFdInner::CharacterDevice(Box::new(character_device));
+        let flags = AtomicFdflags::new(flags);
+        let rights = AtomicRights::new(rights);
+        let rights_inheriting = AtomicRights::new(Rights::empty());
+
+        WasiFd {
+            inner,
+            flags,
+            rights,
+            rights_inheriting,
+            _phantom: PhantomData,
+        }
+    }
+
     fn check_rights(&self, required: Rights) -> WasiResult<()> {
         Self::check_rights_with(self.rights.get(), required)
     }
@@ -35,25 +68,33 @@ impl<S: StringRepresentation> WasiFd<S> {
     }
 
     fn get_filetype(&self) -> Filetype {
-        match self.inner {}
+        match self.inner {
+            WasiFdInner::CharacterDevice(_) => Filetype::CharacterDevice,
+        }
     }
 
     pub(super) fn advise(&self, offset: Filesize, len: Filesize, advice: Advice) -> WasiResult<()> {
         self.check_rights(Rights::FD_ADVISE)?;
 
-        match self.inner {}
+        match self.inner {
+            WasiFdInner::CharacterDevice(_) => Err(Errno::Notsup),
+        }
     }
 
     pub(super) fn allocate(&self, offset: Filesize, len: Filesize) -> WasiResult<()> {
         self.check_rights(Rights::FD_ALLOCATE)?;
 
-        match self.inner {}
+        match self.inner {
+            WasiFdInner::CharacterDevice(_) => Err(Errno::Notsup),
+        }
     }
 
     pub(super) fn datasync(&self) -> WasiResult<()> {
         self.check_rights(Rights::FD_DATASYNC)?;
 
-        match self.inner {}
+        match self.inner {
+            WasiFdInner::CharacterDevice(_) => Err(Errno::Notsup),
+        }
     }
 
     pub(super) fn fdstat_get(&self) -> WasiResult<Fdstat> {
@@ -98,13 +139,17 @@ impl<S: StringRepresentation> WasiFd<S> {
     pub(super) fn filestat_get(&self) -> WasiResult<Filestat> {
         self.check_rights(Rights::FD_FILESTAT_GET)?;
 
-        match self.inner {}
+        match self.inner {
+            WasiFdInner::CharacterDevice(_) => Err(Errno::Notsup),
+        }
     }
 
     pub(super) fn filestat_set_size(&self, size: Filesize) -> WasiResult<()> {
         self.check_rights(Rights::FD_FILESTAT_SET_SIZE)?;
 
-        match self.inner {}
+        match self.inner {
+            WasiFdInner::CharacterDevice(_) => Err(Errno::Notsup),
+        }
     }
 
     pub(super) fn filestat_set_times(
@@ -115,39 +160,53 @@ impl<S: StringRepresentation> WasiFd<S> {
     ) -> WasiResult<()> {
         self.check_rights(Rights::FD_FILESTAT_SET_TIMES)?;
 
-        match self.inner {}
+        match self.inner {
+            WasiFdInner::CharacterDevice(_) => Err(Errno::Notsup),
+        }
     }
 
-    pub(super) fn pread(&self, iovs: &[&mut [u8]], offset: Filesize) -> WasiResult<Size> {
+    pub(super) fn pread(&self, iovs: &mut [IoSliceMut<'_>], offset: Filesize) -> WasiResult<Size> {
         self.check_rights(Rights::FD_READ | Rights::FD_SEEK)?;
 
-        match self.inner {}
+        match self.inner {
+            WasiFdInner::CharacterDevice(_) => Err(Errno::Notsup),
+        }
     }
 
     pub(super) fn prestat_get(&self) -> WasiResult<Prestat> {
-        match self.inner {}
+        match self.inner {
+            WasiFdInner::CharacterDevice(_) => Err(Errno::Notsup),
+        }
     }
 
     pub(super) fn prestat_dir_name(&self) -> WasiResult<S::Owned> {
-        match self.inner {}
+        match self.inner {
+            WasiFdInner::CharacterDevice(_) => Err(Errno::Notsup),
+        }
     }
 
-    pub(super) fn pwrite(&self, bufs: &[&[u8]], offset: Filesize) -> WasiResult<Size> {
+    pub(super) fn pwrite(&self, bufs: &[IoSlice<'_>], offset: Filesize) -> WasiResult<Size> {
         self.check_rights(Rights::FD_WRITE | Rights::FD_SEEK)?;
 
-        match self.inner {}
+        match self.inner {
+            WasiFdInner::CharacterDevice(_) => Err(Errno::Notsup),
+        }
     }
 
-    pub(super) fn read(&self, iovs: &[&mut [u8]]) -> WasiResult<Size> {
+    pub(super) fn read(&self, iovs: &mut [IoSliceMut<'_>]) -> WasiResult<Size> {
         self.check_rights(Rights::FD_READ)?;
 
-        match self.inner {}
+        match self.inner {
+            WasiFdInner::CharacterDevice(ref d) => d.read(iovs),
+        }
     }
 
     pub(super) fn readdir(&self, cookie: Dircookie) -> WasiResult<Option<(Dirent, S::Owned)>> {
         self.check_rights(Rights::FD_READDIR)?;
 
-        match self.inner {}
+        match self.inner {
+            WasiFdInner::CharacterDevice(_) => Err(Errno::Notsup),
+        }
     }
 
     pub(super) fn seek(&self, offset: Filedelta, whence: Whence) -> WasiResult<Filesize> {
@@ -163,13 +222,17 @@ impl<S: StringRepresentation> WasiFd<S> {
             };
         }
 
-        match self.inner {}
+        match self.inner {
+            WasiFdInner::CharacterDevice(_) => Err(Errno::Notsup),
+        }
     }
 
     pub(super) fn sync(&self) -> WasiResult<()> {
         self.check_rights(Rights::FD_SYNC)?;
 
-        match self.inner {}
+        match self.inner {
+            WasiFdInner::CharacterDevice(_) => Err(Errno::Notsup),
+        }
     }
 
     pub(super) fn tell(&self) -> WasiResult<Filesize> {
@@ -181,19 +244,25 @@ impl<S: StringRepresentation> WasiFd<S> {
             }
         }
 
-        match self.inner {}
+        match self.inner {
+            WasiFdInner::CharacterDevice(_) => Err(Errno::Notsup),
+        }
     }
 
-    pub(super) fn write(&self, bufs: &[&[u8]]) -> WasiResult<Size> {
+    pub(super) fn write(&self, bufs: &[IoSlice<'_>]) -> WasiResult<Size> {
         self.check_rights(Rights::FD_WRITE)?;
 
-        match self.inner {}
+        match self.inner {
+            WasiFdInner::CharacterDevice(ref d) => d.write(bufs),
+        }
     }
 
     pub(super) fn path_create_directory(&self, path: &S::Borrowed) -> WasiResult<()> {
         self.check_rights(Rights::PATH_CREATE_DIRECTORY)?;
 
-        match self.inner {}
+        match self.inner {
+            WasiFdInner::CharacterDevice(_) => Err(Errno::Notsup),
+        }
     }
 
     pub(super) fn path_filestat_get(
@@ -203,7 +272,9 @@ impl<S: StringRepresentation> WasiFd<S> {
     ) -> WasiResult<Filestat> {
         self.check_rights(Rights::PATH_FILESTAT_GET)?;
 
-        match self.inner {}
+        match self.inner {
+            WasiFdInner::CharacterDevice(_) => Err(Errno::Notsup),
+        }
     }
 
     pub(super) fn path_filestat_set_times(
@@ -216,7 +287,9 @@ impl<S: StringRepresentation> WasiFd<S> {
     ) -> WasiResult<()> {
         self.check_rights(Rights::PATH_FILESTAT_SET_TIMES)?;
 
-        match self.inner {}
+        match self.inner {
+            WasiFdInner::CharacterDevice(_) => Err(Errno::Notsup),
+        }
     }
 
     pub(super) fn path_open(
@@ -255,7 +328,9 @@ impl<S: StringRepresentation> WasiFd<S> {
             Self::check_rights_with(rights_inheriting, fs_rights_inheriting)?;
         }
 
-        match self.inner {}
+        match self.inner {
+            WasiFdInner::CharacterDevice(_) => Err(Errno::Notsup),
+        }
     }
 
     pub(super) fn path_link(
@@ -268,19 +343,25 @@ impl<S: StringRepresentation> WasiFd<S> {
         self.check_rights(Rights::PATH_LINK_SOURCE)?;
         new_fd.check_rights(Rights::PATH_LINK_TARGET)?;
 
-        match self.inner {}
+        match self.inner {
+            WasiFdInner::CharacterDevice(_) => Err(Errno::Notsup),
+        }
     }
 
     pub(super) fn path_readlink(&self, path: &S::Borrowed) -> WasiResult<S::Owned> {
         self.check_rights(Rights::PATH_READLINK)?;
 
-        match self.inner {}
+        match self.inner {
+            WasiFdInner::CharacterDevice(_) => Err(Errno::Notsup),
+        }
     }
 
     pub(super) fn path_remove_directory(&self, path: &S::Borrowed) -> WasiResult<()> {
         self.check_rights(Rights::PATH_REMOVE_DIRECTORY)?;
 
-        match self.inner {}
+        match self.inner {
+            WasiFdInner::CharacterDevice(_) => Err(Errno::Notsup),
+        }
     }
 
     pub(super) fn path_rename(
@@ -292,7 +373,9 @@ impl<S: StringRepresentation> WasiFd<S> {
         self.check_rights(Rights::PATH_RENAME_SOURCE)?;
         new_fd.check_rights(Rights::PATH_RENAME_TARGET)?;
 
-        match self.inner {}
+        match self.inner {
+            WasiFdInner::CharacterDevice(_) => Err(Errno::Notsup),
+        }
     }
 
     pub(super) fn path_symlink(
@@ -302,34 +385,44 @@ impl<S: StringRepresentation> WasiFd<S> {
     ) -> WasiResult<()> {
         self.check_rights(Rights::PATH_SYMLINK)?;
 
-        match self.inner {}
+        match self.inner {
+            WasiFdInner::CharacterDevice(_) => Err(Errno::Notsup),
+        }
     }
 
     pub(super) fn path_unlink_file(&self, path: &S::Borrowed) -> WasiResult<()> {
         self.check_rights(Rights::PATH_UNLINK_FILE)?;
 
-        match self.inner {}
+        match self.inner {
+            WasiFdInner::CharacterDevice(_) => Err(Errno::Notsup),
+        }
     }
 
     pub(super) fn sock_recv(
         &self,
-        ri_data: &[&mut [u8]],
+        ri_data: &mut [IoSliceMut<'_>],
         ri_flags: Riflags,
     ) -> WasiResult<(Size, Roflags)> {
         self.check_rights(Rights::FD_READ)?;
 
-        match self.inner {}
+        match self.inner {
+            WasiFdInner::CharacterDevice(_) => Err(Errno::Notsup),
+        }
     }
 
-    pub(super) fn sock_send(&self, si_data: &[&[u8]], si_flags: Siflags) -> WasiResult<Size> {
+    pub(super) fn sock_send(&self, si_data: &[IoSlice<'_>], si_flags: Siflags) -> WasiResult<Size> {
         self.check_rights(Rights::FD_WRITE)?;
 
-        match self.inner {}
+        match self.inner {
+            WasiFdInner::CharacterDevice(_) => Err(Errno::Notsup),
+        }
     }
 
     pub(super) fn sock_shutdown(&self, how: Sdflags) -> WasiResult<()> {
         self.check_rights(Rights::SOCK_SHUTDOWN)?;
 
-        match self.inner {}
+        match self.inner {
+            WasiFdInner::CharacterDevice(_) => Err(Errno::Notsup),
+        }
     }
 }

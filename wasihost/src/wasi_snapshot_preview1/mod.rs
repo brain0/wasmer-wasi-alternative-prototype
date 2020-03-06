@@ -3,14 +3,13 @@
 mod atomic;
 mod wasi_fd;
 
-use self::wasi_fd::WasiFd;
 use parking_lot::Mutex;
 use rand::{distributions::Uniform, thread_rng, Rng};
 use std::{
     collections::hash_map::{Entry, HashMap},
     error::Error,
     fs::File,
-    io::Read,
+    io::{IoSlice, IoSliceMut, Read},
     marker::PhantomData,
     mem,
     path::Path,
@@ -18,6 +17,8 @@ use std::{
 };
 use wasihost_core::{string_representation::StringRepresentation, wasi_snapshot_preview1::*};
 use wasmer_runtime::{instantiate, Func};
+
+pub use self::wasi_fd::{CharacterDevice, Stderr, Stdin, Stdout, WasiFd};
 
 /// Host functions for WASI.
 #[derive(Debug)]
@@ -34,10 +35,17 @@ impl<S: StringRepresentation> WasiHost<S> {
     pub fn new(
         arguments: impl IntoIterator<Item = impl Into<S::Owned>>,
         environment: impl IntoIterator<Item = impl Into<S::Owned>>,
+        fd_initialzer: impl WasiFdInitializer<S>,
     ) -> Arc<Self> {
         let arguments = arguments.into_iter().map(|s| s.into()).collect();
         let environment = environment.into_iter().map(|s| s.into()).collect();
-        let fds = Mutex::new(HashMap::new());
+        let fds = Mutex::new(
+            fd_initialzer
+                .initialize()
+                .into_iter()
+                .map(|(k, v)| (k, Arc::new(v)))
+                .collect(),
+        );
         let fd_distribution = (0..2u32.pow(31)).into();
 
         Arc::new(WasiHost {
@@ -210,7 +218,7 @@ impl<S: StringRepresentation> WasiImports for WasiHost<S> {
         self.with_fd(fd, |fd| fd.filestat_set_times(atim, mtim, fst_flags))
     }
 
-    fn fd_pread(&self, fd: Fd, iovs: &[&mut [u8]], offset: Filesize) -> WasiResult<Size> {
+    fn fd_pread(&self, fd: Fd, iovs: &mut [IoSliceMut<'_>], offset: Filesize) -> WasiResult<Size> {
         self.with_fd(fd, |fd| fd.pread(iovs, offset))
     }
 
@@ -222,11 +230,11 @@ impl<S: StringRepresentation> WasiImports for WasiHost<S> {
         self.with_fd(fd, |fd| fd.prestat_dir_name())
     }
 
-    fn fd_pwrite(&self, fd: Fd, bufs: &[&[u8]], offset: Filesize) -> WasiResult<Size> {
+    fn fd_pwrite(&self, fd: Fd, bufs: &[IoSlice<'_>], offset: Filesize) -> WasiResult<Size> {
         self.with_fd(fd, |fd| fd.pwrite(bufs, offset))
     }
 
-    fn fd_read(&self, fd: Fd, iovs: &[&mut [u8]]) -> WasiResult<Size> {
+    fn fd_read(&self, fd: Fd, iovs: &mut [IoSliceMut<'_>]) -> WasiResult<Size> {
         self.with_fd(fd, |fd| fd.read(iovs))
     }
 
@@ -264,7 +272,7 @@ impl<S: StringRepresentation> WasiImports for WasiHost<S> {
         self.with_fd(fd, |fd| fd.tell())
     }
 
-    fn fd_write(&self, fd: Fd, bufs: &[&[u8]]) -> WasiResult<Size> {
+    fn fd_write(&self, fd: Fd, bufs: &[IoSlice<'_>]) -> WasiResult<Size> {
         self.with_fd(fd, |fd| fd.write(bufs))
     }
 
@@ -388,17 +396,43 @@ impl<S: StringRepresentation> WasiImports for WasiHost<S> {
     fn sock_recv(
         &self,
         fd: Fd,
-        ri_data: &[&mut [u8]],
+        ri_data: &mut [IoSliceMut<'_>],
         ri_flags: Riflags,
     ) -> WasiResult<(Size, Roflags)> {
         self.with_fd(fd, |fd| fd.sock_recv(ri_data, ri_flags))
     }
 
-    fn sock_send(&self, fd: Fd, si_data: &[&[u8]], si_flags: Siflags) -> WasiResult<Size> {
+    fn sock_send(&self, fd: Fd, si_data: &[IoSlice<'_>], si_flags: Siflags) -> WasiResult<Size> {
         self.with_fd(fd, |fd| fd.sock_send(si_data, si_flags))
     }
 
     fn sock_shutdown(&self, fd: Fd, how: Sdflags) -> WasiResult<()> {
         self.with_fd(fd, |fd| fd.sock_shutdown(how))
+    }
+}
+
+/// Defines how the file descriptor map is initialized.
+pub trait WasiFdInitializer<S> {
+    /// Initializes the file descriptor map.
+    fn initialize(self) -> HashMap<Fd, WasiFd<S>>;
+}
+
+/// Default initializer for the file descriptor map. Initialized
+/// standard input, output and error.
+#[derive(Debug, Default)]
+pub struct DefaultWasiFdInitializer;
+
+impl<S: StringRepresentation> WasiFdInitializer<S> for DefaultWasiFdInitializer {
+    fn initialize(self) -> HashMap<Fd, WasiFd<S>> {
+        let mut fds = HashMap::with_capacity(3);
+
+        let flags = Fdflags::empty();
+        let rights = Rights::all();
+
+        fds.insert(Fd(0), WasiFd::from_character_device(Stdin, flags, rights));
+        fds.insert(Fd(1), WasiFd::from_character_device(Stdout, flags, rights));
+        fds.insert(Fd(2), WasiFd::from_character_device(Stderr, flags, rights));
+
+        fds
     }
 }
