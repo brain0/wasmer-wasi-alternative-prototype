@@ -390,7 +390,8 @@ impl<S: StringRepresentation> WasiImports for WasiHost<S> {
     }
 
     fn sched_yield(&self) -> WasiResult<()> {
-        todo!("sched_yield")
+        std::thread::yield_now();
+        Ok(())
     }
 
     fn sock_recv(
