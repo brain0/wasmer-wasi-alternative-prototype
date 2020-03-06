@@ -145,12 +145,12 @@ impl<S: StringRepresentation> WasiImports for WasiHost<S> {
         Ok(&self.environment[..])
     }
 
-    fn clock_res_get(&self, _: Clockid) -> WasiResult<Timestamp> {
-        todo!("clock_res_get")
+    fn clock_res_get(&self, id: Clockid) -> WasiResult<Timestamp> {
+        crate::os::preview1_clock_res_get(id)
     }
 
-    fn clock_time_get(&self, _: Clockid, _: Timestamp) -> WasiResult<Timestamp> {
-        todo!("clock_time_get")
+    fn clock_time_get(&self, id: Clockid, precision: Timestamp) -> WasiResult<Timestamp> {
+        crate::os::preview1_clock_time_get(id, precision)
     }
 
     fn fd_advise(&self, fd: Fd, offset: Filesize, len: Filesize, advice: Advice) -> WasiResult<()> {

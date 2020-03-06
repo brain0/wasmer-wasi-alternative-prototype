@@ -12,3 +12,10 @@ parking_lot = "0.10"
 rand = "0.7.3"
 wasmer-runtime = "0.14.1"
 wasihost-core = { path = "../wasihost-core" }
+
+[target.'cfg(windows)'.dependencies]
+winapi = "0.3.8"
+
+[target.'cfg(unix)'.dependencies]
+errno = "0.2.4"
+libc = "0.2.67"

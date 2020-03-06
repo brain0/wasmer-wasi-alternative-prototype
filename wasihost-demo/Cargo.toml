@@ -1,5 +1,5 @@
 [package]
-name = "wasm-demo"
+name = "wasmihost-demo"
 version = "0.1.0"
 authors = ["Thomas Bächler <thomas@archlinux.org>"]
 edition = "2018"

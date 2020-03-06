@@ -13,6 +13,7 @@
     variant_size_differences
 )]
 
+mod os;
 pub mod wasi_snapshot_preview1;
 
 pub use wasihost_core::string_representation;
