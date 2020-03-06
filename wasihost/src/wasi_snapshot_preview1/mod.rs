@@ -374,7 +374,7 @@ impl<S: StringRepresentation> WasiImports for WasiHost<S> {
     }
 
     fn poll_oneoff(&self, _subscriptions: &[Subscription]) -> WasiResult<Vec<Event>> {
-        todo!("poll_oneoff")
+        Err(Errno::Nosys)
     }
 
     fn proc_exit(&self, c: Exitcode) -> Result<std::convert::Infallible, Exitcode> {
@@ -382,7 +382,7 @@ impl<S: StringRepresentation> WasiImports for WasiHost<S> {
     }
 
     fn proc_raise(&self, _: Signal) -> WasiResult<()> {
-        todo!("proc_raise")
+        Err(Errno::Nosys)
     }
 
     fn random_get(&self, buf: &mut [u8]) -> WasiResult<()> {
