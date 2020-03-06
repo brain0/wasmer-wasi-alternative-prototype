@@ -6,14 +6,15 @@ use super::atomic::{AtomicFdflags, AtomicRights};
 use std::{
     io::{IoSlice, IoSliceMut},
     marker::PhantomData,
+    ops::Deref,
 };
 use wasihost_core::{
-    string_representation::StringRepresentation,
     wasi_snapshot_preview1::{
         Advice, Dircookie, Dirent, Errno, Fdflags, Fdstat, Filedelta, Filesize, Filestat, Filetype,
         Fstflags, Lookupflags, Oflags, Prestat, Riflags, Rights, Roflags, Sdflags, Siflags, Size,
         Timestamp, WasiResult, Whence,
     },
+    StringRepresentation,
 };
 
 #[allow(unreachable_pub)] // false positive
@@ -179,7 +180,7 @@ impl<S: StringRepresentation> WasiFd<S> {
         }
     }
 
-    pub(super) fn prestat_dir_name(&self) -> WasiResult<S::Owned> {
+    pub(super) fn prestat_dir_name(&self) -> WasiResult<S> {
         match self.inner {
             WasiFdInner::CharacterDevice(_) => Err(Errno::Notsup),
         }
@@ -201,7 +202,7 @@ impl<S: StringRepresentation> WasiFd<S> {
         }
     }
 
-    pub(super) fn readdir(&self, cookie: Dircookie) -> WasiResult<Option<(Dirent, S::Owned)>> {
+    pub(super) fn readdir(&self, cookie: Dircookie) -> WasiResult<Option<(Dirent, S)>> {
         self.check_rights(Rights::FD_READDIR)?;
 
         match self.inner {
@@ -257,7 +258,7 @@ impl<S: StringRepresentation> WasiFd<S> {
         }
     }
 
-    pub(super) fn path_create_directory(&self, path: &S::Borrowed) -> WasiResult<()> {
+    pub(super) fn path_create_directory(&self, path: &<S as Deref>::Target) -> WasiResult<()> {
         self.check_rights(Rights::PATH_CREATE_DIRECTORY)?;
 
         match self.inner {
@@ -268,7 +269,7 @@ impl<S: StringRepresentation> WasiFd<S> {
     pub(super) fn path_filestat_get(
         &self,
         flags: Lookupflags,
-        path: &S::Borrowed,
+        path: &<S as Deref>::Target,
     ) -> WasiResult<Filestat> {
         self.check_rights(Rights::PATH_FILESTAT_GET)?;
 
@@ -280,7 +281,7 @@ impl<S: StringRepresentation> WasiFd<S> {
     pub(super) fn path_filestat_set_times(
         &self,
         flags: Lookupflags,
-        path: &S::Borrowed,
+        path: &<S as Deref>::Target,
         atim: Timestamp,
         mtim: Timestamp,
         fst_flags: Fstflags,
@@ -295,7 +296,7 @@ impl<S: StringRepresentation> WasiFd<S> {
     pub(super) fn path_open(
         &self,
         dirflags: Lookupflags,
-        path: &S::Borrowed,
+        path: &<S as Deref>::Target,
         oflags: Oflags,
         fs_rights_base: Rights,
         fs_rights_inheriting: Rights,
@@ -336,9 +337,9 @@ impl<S: StringRepresentation> WasiFd<S> {
     pub(super) fn path_link(
         &self,
         old_flags: Lookupflags,
-        old_path: &S::Borrowed,
+        old_path: &<S as Deref>::Target,
         new_fd: &Self,
-        new_path: &S::Borrowed,
+        new_path: &<S as Deref>::Target,
     ) -> WasiResult<()> {
         self.check_rights(Rights::PATH_LINK_SOURCE)?;
         new_fd.check_rights(Rights::PATH_LINK_TARGET)?;
@@ -348,7 +349,7 @@ impl<S: StringRepresentation> WasiFd<S> {
         }
     }
 
-    pub(super) fn path_readlink(&self, path: &S::Borrowed) -> WasiResult<S::Owned> {
+    pub(super) fn path_readlink(&self, path: &<S as Deref>::Target) -> WasiResult<S> {
         self.check_rights(Rights::PATH_READLINK)?;
 
         match self.inner {
@@ -356,7 +357,7 @@ impl<S: StringRepresentation> WasiFd<S> {
         }
     }
 
-    pub(super) fn path_remove_directory(&self, path: &S::Borrowed) -> WasiResult<()> {
+    pub(super) fn path_remove_directory(&self, path: &<S as Deref>::Target) -> WasiResult<()> {
         self.check_rights(Rights::PATH_REMOVE_DIRECTORY)?;
 
         match self.inner {
@@ -366,9 +367,9 @@ impl<S: StringRepresentation> WasiFd<S> {
 
     pub(super) fn path_rename(
         &self,
-        old_path: &S::Borrowed,
+        old_path: &<S as Deref>::Target,
         new_fd: &Self,
-        new_path: &S::Borrowed,
+        new_path: &<S as Deref>::Target,
     ) -> WasiResult<()> {
         self.check_rights(Rights::PATH_RENAME_SOURCE)?;
         new_fd.check_rights(Rights::PATH_RENAME_TARGET)?;
@@ -380,8 +381,8 @@ impl<S: StringRepresentation> WasiFd<S> {
 
     pub(super) fn path_symlink(
         &self,
-        old_path: &S::Borrowed,
-        new_path: &S::Borrowed,
+        old_path: &<S as Deref>::Target,
+        new_path: &<S as Deref>::Target,
     ) -> WasiResult<()> {
         self.check_rights(Rights::PATH_SYMLINK)?;
 
@@ -390,7 +391,7 @@ impl<S: StringRepresentation> WasiFd<S> {
         }
     }
 
-    pub(super) fn path_unlink_file(&self, path: &S::Borrowed) -> WasiResult<()> {
+    pub(super) fn path_unlink_file(&self, path: &<S as Deref>::Target) -> WasiResult<()> {
         self.check_rights(Rights::PATH_UNLINK_FILE)?;
 
         match self.inner {

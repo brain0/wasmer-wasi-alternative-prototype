@@ -10,12 +10,12 @@ use std::{
     error::Error,
     fs::File,
     io::{IoSlice, IoSliceMut, Read},
-    marker::PhantomData,
     mem,
+    ops::Deref,
     path::Path,
     sync::Arc,
 };
-use wasihost_core::{string_representation::StringRepresentation, wasi_snapshot_preview1::*};
+use wasihost_core::{wasi_snapshot_preview1::*, StringRepresentation};
 use wasmer_runtime::{instantiate, Func};
 
 pub use self::wasi_fd::{CharacterDevice, Stderr, Stdin, Stdout, WasiFd};
@@ -23,18 +23,17 @@ pub use self::wasi_fd::{CharacterDevice, Stderr, Stdin, Stdout, WasiFd};
 /// Host functions for WASI.
 #[derive(Debug)]
 pub struct WasiHost<S: StringRepresentation> {
-    arguments: Vec<S::Owned>,
-    environment: Vec<S::Owned>,
+    arguments: Vec<S>,
+    environment: Vec<S>,
     fds: Mutex<HashMap<Fd, Arc<WasiFd<S>>>>,
     fd_distribution: Uniform<u32>,
-    _phantom: PhantomData<fn(S) -> S>,
 }
 
 impl<S: StringRepresentation> WasiHost<S> {
     /// Creates a new WASI host.
     pub fn new(
-        arguments: impl IntoIterator<Item = impl Into<S::Owned>>,
-        environment: impl IntoIterator<Item = impl Into<S::Owned>>,
+        arguments: impl IntoIterator<Item = impl Into<S>>,
+        environment: impl IntoIterator<Item = impl Into<S>>,
         fd_initialzer: impl WasiFdInitializer<S>,
     ) -> Arc<Self> {
         let arguments = arguments.into_iter().map(|s| s.into()).collect();
@@ -53,7 +52,6 @@ impl<S: StringRepresentation> WasiHost<S> {
             environment,
             fds,
             fd_distribution,
-            _phantom: PhantomData,
         })
     }
 
@@ -137,11 +135,11 @@ impl<S: StringRepresentation> WasiHost<S> {
 impl<S: StringRepresentation> WasiImports for WasiHost<S> {
     type StringRepresentation = S;
 
-    fn args_get(&self) -> WasiResult<&[S::Owned]> {
+    fn args_get(&self) -> WasiResult<&[S]> {
         Ok(&self.arguments[..])
     }
 
-    fn environ_get(&self) -> WasiResult<&[S::Owned]> {
+    fn environ_get(&self) -> WasiResult<&[S]> {
         Ok(&self.environment[..])
     }
 
@@ -226,7 +224,7 @@ impl<S: StringRepresentation> WasiImports for WasiHost<S> {
         self.with_fd(fd, |fd| fd.prestat_get())
     }
 
-    fn fd_prestat_dir_name(&self, fd: Fd) -> WasiResult<S::Owned> {
+    fn fd_prestat_dir_name(&self, fd: Fd) -> WasiResult<S> {
         self.with_fd(fd, |fd| fd.prestat_dir_name())
     }
 
@@ -238,7 +236,7 @@ impl<S: StringRepresentation> WasiImports for WasiHost<S> {
         self.with_fd(fd, |fd| fd.read(iovs))
     }
 
-    fn fd_readdir(&self, fd: Fd, cookie: Dircookie) -> WasiResult<Option<(Dirent, S::Owned)>> {
+    fn fd_readdir(&self, fd: Fd, cookie: Dircookie) -> WasiResult<Option<(Dirent, S)>> {
         self.with_fd(fd, |fd| fd.readdir(cookie))
     }
 
@@ -276,7 +274,7 @@ impl<S: StringRepresentation> WasiImports for WasiHost<S> {
         self.with_fd(fd, |fd| fd.write(bufs))
     }
 
-    fn path_create_directory(&self, fd: Fd, path: &S::Borrowed) -> WasiResult<()> {
+    fn path_create_directory(&self, fd: Fd, path: &<S as Deref>::Target) -> WasiResult<()> {
         self.with_fd(fd, |fd| fd.path_create_directory(path))
     }
 
@@ -284,7 +282,7 @@ impl<S: StringRepresentation> WasiImports for WasiHost<S> {
         &self,
         fd: Fd,
         flags: Lookupflags,
-        path: &S::Borrowed,
+        path: &<S as Deref>::Target,
     ) -> WasiResult<Filestat> {
         self.with_fd(fd, |fd| fd.path_filestat_get(flags, path))
     }
@@ -293,7 +291,7 @@ impl<S: StringRepresentation> WasiImports for WasiHost<S> {
         &self,
         fd: Fd,
         flags: Lookupflags,
-        path: &S::Borrowed,
+        path: &<S as Deref>::Target,
         atim: Timestamp,
         mtim: Timestamp,
         fst_flags: Fstflags,
@@ -307,7 +305,7 @@ impl<S: StringRepresentation> WasiImports for WasiHost<S> {
         &self,
         fd: Fd,
         dirflags: Lookupflags,
-        path: &S::Borrowed,
+        path: &<S as Deref>::Target,
         oflags: Oflags,
         fs_rights_base: Rights,
         fs_rights_inheriting: Rights,
@@ -331,29 +329,29 @@ impl<S: StringRepresentation> WasiImports for WasiHost<S> {
         &self,
         old_fd: Fd,
         old_flags: Lookupflags,
-        old_path: &S::Borrowed,
+        old_path: &<S as Deref>::Target,
         new_fd: Fd,
-        new_path: &S::Borrowed,
+        new_path: &<S as Deref>::Target,
     ) -> WasiResult<()> {
         self.with_fds(old_fd, new_fd, |old_fd, new_fd| {
             old_fd.path_link(old_flags, old_path, new_fd, new_path)
         })
     }
 
-    fn path_readlink(&self, fd: Fd, path: &S::Borrowed) -> WasiResult<S::Owned> {
+    fn path_readlink(&self, fd: Fd, path: &<S as Deref>::Target) -> WasiResult<S> {
         self.with_fd(fd, |fd| fd.path_readlink(path))
     }
 
-    fn path_remove_directory(&self, fd: Fd, path: &S::Borrowed) -> WasiResult<()> {
+    fn path_remove_directory(&self, fd: Fd, path: &<S as Deref>::Target) -> WasiResult<()> {
         self.with_fd(fd, |fd| fd.path_remove_directory(path))
     }
 
     fn path_rename(
         &self,
         fd: Fd,
-        old_path: &S::Borrowed,
+        old_path: &<S as Deref>::Target,
         new_fd: Fd,
-        new_path: &S::Borrowed,
+        new_path: &<S as Deref>::Target,
     ) -> WasiResult<()> {
         self.with_fds(fd, new_fd, |fd, new_fd| {
             fd.path_rename(old_path, new_fd, new_path)
@@ -362,14 +360,14 @@ impl<S: StringRepresentation> WasiImports for WasiHost<S> {
 
     fn path_symlink(
         &self,
-        old_path: &S::Borrowed,
+        old_path: &<S as Deref>::Target,
         fd: Fd,
-        new_path: &S::Borrowed,
+        new_path: &<S as Deref>::Target,
     ) -> WasiResult<()> {
         self.with_fd(fd, |fd| fd.path_symlink(old_path, new_path))
     }
 
-    fn path_unlink_file(&self, fd: Fd, path: &S::Borrowed) -> WasiResult<()> {
+    fn path_unlink_file(&self, fd: Fd, path: &<S as Deref>::Target) -> WasiResult<()> {
         self.with_fd(fd, |fd| fd.path_unlink_file(path))
     }
 

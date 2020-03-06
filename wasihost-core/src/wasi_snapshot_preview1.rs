@@ -6,6 +6,7 @@ use std::{
     cell::Cell,
     cmp::min,
     io::{IoSlice, IoSliceMut},
+    ops::Deref,
     sync::Arc,
 };
 use witx_gen::{
@@ -48,19 +49,15 @@ impl From<std::io::Error> for Errno {
 
 /// Functions necessary to satisfy the WASI specification.
 pub trait WasiImports: Send + Sync + 'static {
-    /// Determines how strings are represented in the high-level APIs.
+    /// String representation in the high-level APIs.
     type StringRepresentation: StringRepresentation;
 
     /// Gets the command-line parameters.
-    fn args_get(
-        &self,
-    ) -> WasiResult<&[<Self::StringRepresentation as StringRepresentation>::Owned]>;
+    fn args_get(&self) -> WasiResult<&[Self::StringRepresentation]>;
 
     /// Gets the environment. Is is common convention that each string is of the form
     /// `key=value`.
-    fn environ_get(
-        &self,
-    ) -> WasiResult<&[<Self::StringRepresentation as StringRepresentation>::Owned]>;
+    fn environ_get(&self) -> WasiResult<&[Self::StringRepresentation]>;
 
     /// Return the resolution of a clock. Implementations are required to provide a non-zero value for
     /// supported clocks. For unsupported clocks, return `Err(Errno::Inval)`.
@@ -141,10 +138,7 @@ pub trait WasiImports: Send + Sync + 'static {
     fn fd_prestat_get(&self, fd: Fd) -> WasiResult<Prestat>;
 
     /// Return the directory name of the given preopened file descriptor.
-    fn fd_prestat_dir_name(
-        &self,
-        fd: Fd,
-    ) -> WasiResult<<Self::StringRepresentation as StringRepresentation>::Owned>;
+    fn fd_prestat_dir_name(&self, fd: Fd) -> WasiResult<Self::StringRepresentation>;
 
     /// Write to a file descriptor, without using and updating the file descriptor's offset.
     ///
@@ -163,12 +157,7 @@ pub trait WasiImports: Send + Sync + 'static {
         &self,
         fd: Fd,
         cookie: Dircookie,
-    ) -> WasiResult<
-        Option<(
-            Dirent,
-            <Self::StringRepresentation as StringRepresentation>::Owned,
-        )>,
-    >;
+    ) -> WasiResult<Option<(Dirent, Self::StringRepresentation)>>;
 
     /// Atomically replace a file descriptor by renumbering another file descriptor. Due to the strong
     /// focus on thread safety, this environment does not provide a mechanism to duplicate or renumber
@@ -203,7 +192,7 @@ pub trait WasiImports: Send + Sync + 'static {
     fn path_create_directory(
         &self,
         fd: Fd,
-        path: &<Self::StringRepresentation as StringRepresentation>::Borrowed,
+        path: &<Self::StringRepresentation as Deref>::Target,
     ) -> WasiResult<()>;
 
     /// Return the attributes of a file or directory.
@@ -213,7 +202,7 @@ pub trait WasiImports: Send + Sync + 'static {
         &self,
         fd: Fd,
         flags: Lookupflags,
-        path: &<Self::StringRepresentation as StringRepresentation>::Borrowed,
+        path: &<Self::StringRepresentation as Deref>::Target,
     ) -> WasiResult<Filestat>;
 
     /// Adjust the timestamps of a file or directory.
@@ -223,7 +212,7 @@ pub trait WasiImports: Send + Sync + 'static {
         &self,
         fd: Fd,
         flags: Lookupflags,
-        path: &<Self::StringRepresentation as StringRepresentation>::Borrowed,
+        path: &<Self::StringRepresentation as Deref>::Target,
         atim: Timestamp,
         mtim: Timestamp,
         fst_flags: Fstflags,
@@ -236,9 +225,9 @@ pub trait WasiImports: Send + Sync + 'static {
         &self,
         old_fd: Fd,
         old_flags: Lookupflags,
-        old_path: &<Self::StringRepresentation as StringRepresentation>::Borrowed,
+        old_path: &<Self::StringRepresentation as Deref>::Target,
         new_fd: Fd,
-        new_path: &<Self::StringRepresentation as StringRepresentation>::Borrowed,
+        new_path: &<Self::StringRepresentation as Deref>::Target,
     ) -> WasiResult<()>;
 
     /// Open a file or directory. The returned file descriptor is not guaranteed to be the lowest-numbered
@@ -251,7 +240,7 @@ pub trait WasiImports: Send + Sync + 'static {
         &self,
         fd: Fd,
         dirflags: Lookupflags,
-        path: &<Self::StringRepresentation as StringRepresentation>::Borrowed,
+        path: &<Self::StringRepresentation as Deref>::Target,
         oflags: Oflags,
         fs_rights_base: Rights,
         fs_rights_inheriting: Rights,
@@ -264,8 +253,8 @@ pub trait WasiImports: Send + Sync + 'static {
     fn path_readlink(
         &self,
         fd: Fd,
-        path: &<Self::StringRepresentation as StringRepresentation>::Borrowed,
-    ) -> WasiResult<<Self::StringRepresentation as StringRepresentation>::Owned>;
+        path: &<Self::StringRepresentation as Deref>::Target,
+    ) -> WasiResult<Self::StringRepresentation>;
 
     /// Remove a directory. Return `Err(Errno::Notempty)` if the directory is not empty.
     ///
@@ -273,7 +262,7 @@ pub trait WasiImports: Send + Sync + 'static {
     fn path_remove_directory(
         &self,
         fd: Fd,
-        path: &<Self::StringRepresentation as StringRepresentation>::Borrowed,
+        path: &<Self::StringRepresentation as Deref>::Target,
     ) -> WasiResult<()>;
 
     /// Rename a file or directory.
@@ -282,9 +271,9 @@ pub trait WasiImports: Send + Sync + 'static {
     fn path_rename(
         &self,
         fd: Fd,
-        old_path: &<Self::StringRepresentation as StringRepresentation>::Borrowed,
+        old_path: &<Self::StringRepresentation as Deref>::Target,
         new_fd: Fd,
-        new_path: &<Self::StringRepresentation as StringRepresentation>::Borrowed,
+        new_path: &<Self::StringRepresentation as Deref>::Target,
     ) -> WasiResult<()>;
 
     /// Create a symbolic link.
@@ -292,9 +281,9 @@ pub trait WasiImports: Send + Sync + 'static {
     /// Note: This is similar to `symlinkat` in POSIX.
     fn path_symlink(
         &self,
-        old_path: &<Self::StringRepresentation as StringRepresentation>::Borrowed,
+        old_path: &<Self::StringRepresentation as Deref>::Target,
         fd: Fd,
-        new_path: &<Self::StringRepresentation as StringRepresentation>::Borrowed,
+        new_path: &<Self::StringRepresentation as Deref>::Target,
     ) -> WasiResult<()>;
 
     /// Unlink a file. Return `Err(Errno::Isdir)` if the path refers to a directory.
@@ -303,7 +292,7 @@ pub trait WasiImports: Send + Sync + 'static {
     fn path_unlink_file(
         &self,
         fd: Fd,
-        path: &<Self::StringRepresentation as StringRepresentation>::Borrowed,
+        path: &<Self::StringRepresentation as Deref>::Target,
     ) -> WasiResult<()>;
 
     /// Concurrently poll for the occurrence of a set of events.
@@ -382,9 +371,7 @@ impl<T> Clone for NativeWasiAdapter<T> {
 
 impl<T: WasiImports> NativeWasiAdapter<T> {
     fn fill_bufs(
-        strings: WasiResult<
-            &[<<T as WasiImports>::StringRepresentation as StringRepresentation>::Owned],
-        >,
+        strings: WasiResult<&[<T as WasiImports>::StringRepresentation]>,
         memory: &Memory,
         ptrs: WasmSlicePtr<WasmSlicePtr<u8>>,
         buf: WasmSlicePtr<u8>,
@@ -397,7 +384,7 @@ impl<T: WasiImports> NativeWasiAdapter<T> {
                     let buf = buf.add(index);
                     ptrs.write(i as u32, buf);
 
-                    let s = <T as WasiImports>::StringRepresentation::owned_as_bytes(s);
+                    let s = s.as_bytes();
                     let len = s.len() as u32;
                     let buf = buf.with(memory, len + 1);
 
@@ -416,20 +403,13 @@ impl<T: WasiImports> NativeWasiAdapter<T> {
     }
 
     fn to_sizes(
-        strings: WasiResult<
-            &[<<T as WasiImports>::StringRepresentation as StringRepresentation>::Owned],
-        >,
+        strings: WasiResult<&[<T as WasiImports>::StringRepresentation]>,
     ) -> (native::errno, native::size, native::size) {
         match strings {
             Ok(strings) => (
                 native::errno_success,
                 strings.len() as u32,
-                strings
-                    .iter()
-                    .map(|s| {
-                        <T as WasiImports>::StringRepresentation::owned_as_bytes(s).len() as u32 + 1
-                    })
-                    .sum(),
+                strings.iter().map(|s| s.as_bytes().len() as u32 + 1).sum(),
             ),
             Err(err) => (err.to_native(), 0, 0),
         }
@@ -466,9 +446,9 @@ impl<T: WasiImports> NativeWasiAdapter<T> {
         memory: &Memory,
         wasm_buf: WasmSlicePtr<u8>,
         wasm_buf_len: native::size,
-    ) -> WasiResult<<<T as WasiImports>::StringRepresentation as StringRepresentation>::Owned> {
+    ) -> WasiResult<<T as WasiImports>::StringRepresentation> {
         let buf = Self::read_from_buf(memory, wasm_buf, wasm_buf_len);
-        <T as WasiImports>::StringRepresentation::owned_from_bytes(buf).map_err(|_| Errno::Inval)
+        <T as WasiImports>::StringRepresentation::from_bytes(buf).map_err(|_| Errno::Inval)
     }
 
     fn write_to_bufs<F: FnOnce(&mut [IoSliceMut<'_>]) -> R, S: FnOnce(&R) -> native::size, R>(
@@ -799,7 +779,7 @@ impl<T: WasiImports> NativeWasiImports for NativeWasiAdapter<T> {
             Ok(s) => s,
             Err(e) => return e.to_native(),
         };
-        let dirname = <T as WasiImports>::StringRepresentation::owned_as_bytes(&dirname);
+        let dirname = dirname.as_bytes();
 
         Self::write_to_buf(
             ctx.memory(0),
@@ -886,7 +866,7 @@ impl<T: WasiImports> NativeWasiImports for NativeWasiAdapter<T> {
                 }
             }
 
-            let name = <T as WasiImports>::StringRepresentation::owned_as_bytes(&name);
+            let name = name.as_bytes();
             assert_eq!(name.len() as u32, entry.d_namlen.0);
             for i in 0..entry.d_namlen.0 as usize {
                 buf.write(offset, name[i]);
@@ -960,9 +940,7 @@ impl<T: WasiImports> NativeWasiImports for NativeWasiAdapter<T> {
         let fd = try0!(Fd::from_native(fd));
         let path = try0!(Self::read_string_from_buf(ctx.memory(0), path, path_len));
 
-        to_result0!(self
-            .0
-            .path_create_directory(fd, <T as WasiImports>::StringRepresentation::borrow(&path)))
+        to_result0!(self.0.path_create_directory(fd, &path))
     }
 
     fn path_filestat_get(
@@ -977,11 +955,7 @@ impl<T: WasiImports> NativeWasiImports for NativeWasiAdapter<T> {
         let flags = try1!(Lookupflags::from_native(flags));
         let path = try1!(Self::read_string_from_buf(ctx.memory(0), path, path_len));
 
-        to_result1!(self.0.path_filestat_get(
-            fd,
-            flags,
-            <T as WasiImports>::StringRepresentation::borrow(&path)
-        ))
+        to_result1!(self.0.path_filestat_get(fd, flags, &path))
     }
 
     fn path_filestat_set_times(
@@ -1002,14 +976,9 @@ impl<T: WasiImports> NativeWasiImports for NativeWasiAdapter<T> {
         let mtim = try0!(Timestamp::from_native(mtim));
         let fst_flags = try0!(Fstflags::from_native(fst_flags));
 
-        to_result0!(self.0.path_filestat_set_times(
-            fd,
-            flags,
-            <T as WasiImports>::StringRepresentation::borrow(&path),
-            atim,
-            mtim,
-            fst_flags
-        ))
+        to_result0!(self
+            .0
+            .path_filestat_set_times(fd, flags, &path, atim, mtim, fst_flags))
     }
 
     fn path_link(
@@ -1031,13 +1000,9 @@ impl<T: WasiImports> NativeWasiImports for NativeWasiAdapter<T> {
         let new_fd = try0!(Fd::from_native(new_fd));
         let new_path = try0!(Self::read_string_from_buf(memory, new_path, new_path_len));
 
-        to_result0!(self.0.path_link(
-            old_fd,
-            old_flags,
-            <T as WasiImports>::StringRepresentation::borrow(&old_path),
-            new_fd,
-            <T as WasiImports>::StringRepresentation::borrow(&new_path)
-        ))
+        to_result0!(self
+            .0
+            .path_link(old_fd, old_flags, &old_path, new_fd, &new_path))
     }
 
     fn path_open(
@@ -1063,7 +1028,7 @@ impl<T: WasiImports> NativeWasiImports for NativeWasiAdapter<T> {
         to_result1!(self.0.path_open(
             fd,
             dirflags,
-            <T as WasiImports>::StringRepresentation::borrow(&path),
+            &path,
             oflags,
             fs_rights_base,
             fs_rights_inheriting,
@@ -1085,10 +1050,7 @@ impl<T: WasiImports> NativeWasiImports for NativeWasiAdapter<T> {
         let fd = try1!(Fd::from_native(fd));
         let path = try1!(Self::read_string_from_buf(memory, path, path_len));
 
-        let result = match self
-            .0
-            .path_readlink(fd, <T as WasiImports>::StringRepresentation::borrow(&path))
-        {
+        let result = match self.0.path_readlink(fd, &path) {
             Ok(result) => result,
             Err(err) => return (err.to_native(), Default::default()),
         };
@@ -1098,7 +1060,7 @@ impl<T: WasiImports> NativeWasiImports for NativeWasiAdapter<T> {
             buf,
             buf_len,
             |buf| {
-                let result = <T as WasiImports>::StringRepresentation::owned_as_bytes(&result);
+                let result = result.as_bytes();
                 let len = min(buf.len(), result.len());
 
                 buf[..len].copy_from_slice(&result[..len]);
@@ -1118,9 +1080,7 @@ impl<T: WasiImports> NativeWasiImports for NativeWasiAdapter<T> {
         let fd = try0!(Fd::from_native(fd));
         let path = try0!(Self::read_string_from_buf(ctx.memory(0), path, path_len));
 
-        to_result0!(self
-            .0
-            .path_remove_directory(fd, <T as WasiImports>::StringRepresentation::borrow(&path)))
+        to_result0!(self.0.path_remove_directory(fd, &path))
     }
 
     fn path_rename(
@@ -1140,12 +1100,7 @@ impl<T: WasiImports> NativeWasiImports for NativeWasiAdapter<T> {
         let new_fd = try0!(Fd::from_native(new_fd));
         let new_path = try0!(Self::read_string_from_buf(memory, new_path, new_path_len));
 
-        to_result0!(self.0.path_rename(
-            fd,
-            <T as WasiImports>::StringRepresentation::borrow(&old_path),
-            new_fd,
-            <T as WasiImports>::StringRepresentation::borrow(&new_path)
-        ))
+        to_result0!(self.0.path_rename(fd, &old_path, new_fd, &new_path))
     }
 
     fn path_symlink(
@@ -1163,11 +1118,7 @@ impl<T: WasiImports> NativeWasiImports for NativeWasiAdapter<T> {
         let fd = try0!(Fd::from_native(fd));
         let new_path = try0!(Self::read_string_from_buf(memory, new_path, new_path_len));
 
-        to_result0!(self.0.path_symlink(
-            <T as WasiImports>::StringRepresentation::borrow(&old_path),
-            fd,
-            <T as WasiImports>::StringRepresentation::borrow(&new_path)
-        ))
+        to_result0!(self.0.path_symlink(&old_path, fd, &new_path))
     }
 
     fn path_unlink_file(
@@ -1180,9 +1131,7 @@ impl<T: WasiImports> NativeWasiImports for NativeWasiAdapter<T> {
         let fd = try0!(Fd::from_native(fd));
         let path = try0!(Self::read_string_from_buf(ctx.memory(0), path, path_len));
 
-        to_result0!(self
-            .0
-            .path_unlink_file(fd, <T as WasiImports>::StringRepresentation::borrow(&path)))
+        to_result0!(self.0.path_unlink_file(fd, &path))
     }
 
     fn poll_oneoff(
